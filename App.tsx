@@ -6,6 +6,7 @@ import { StaffManagement } from './components/StaffManagement';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
+import { ShiftManagersTop } from './components/ShiftManagers';
 import { STAFF_DB, MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA, MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA, EXTRA_STAFF } from './constants';
 import { 
     Table as TableIcon,
@@ -165,11 +166,16 @@ const App: React.FC = () => {
     setRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   }, []);
 
-  const handleUpdateStaff = useCallback((updatedMember: StaffMember) => {
-    // 1. Actualizar en la lista maestra de personal
-    setStaffList(prev => prev.map(s => s.id === updatedMember.id ? updatedMember : s));
+  const handleUpdateMetadata = (field: keyof ShiftMetadata, value: any) => {
+    if (shiftFilter === 'TODOS') return;
+    setShiftsMetadata(prev => ({
+        ...prev,
+        [shiftFilter]: { ...prev[shiftFilter], [field]: value }
+    }));
+  };
 
-    // 2. Sincronizar con los registros del Parte Diario (Recolección)
+  const handleUpdateStaff = useCallback((updatedMember: StaffMember) => {
+    setStaffList(prev => prev.map(s => s.id === updatedMember.id ? updatedMember : s));
     setRecords(prevRecords => prevRecords.map(record => {
         const r = { ...record };
         if (r.driver?.id === updatedMember.id) r.driver = updatedMember;
@@ -182,8 +188,6 @@ const App: React.FC = () => {
         if (r.replacementAux2?.id === updatedMember.id) r.replacementAux2 = updatedMember;
         return r;
     }));
-
-    // 3. Sincronizar con Transferencia
     setTransferRecords(prevTransfers => prevTransfers.map(row => {
         const r = { ...row };
         if (r.maquinista?.id === updatedMember.id) r.maquinista = updatedMember;
@@ -197,12 +201,10 @@ const App: React.FC = () => {
         if (r.balancero2?.id === updatedMember.id) r.balancero2 = updatedMember;
         if (r.lonero?.id === updatedMember.id) r.lonero = updatedMember;
         if (r.suplenciaLona?.id === updatedMember.id) r.suplenciaLona = updatedMember;
-        
         r.units = r.units.map(u => ({
             ...u,
             driver: u.driver?.id === updatedMember.id ? updatedMember : u.driver
         })) as [TransferUnit, TransferUnit, TransferUnit];
-        
         return r;
     }));
   }, []);
@@ -317,10 +319,22 @@ const App: React.FC = () => {
         </header>
 
         {activeTab === 'parte' && (
-          <div className="bg-white border-b border-slate-200 px-10 py-4 flex gap-4 shrink-0 shadow-sm z-10 overflow-x-auto no-scrollbar">
-            <button onClick={() => setSubTab('recoleccion')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'recoleccion' ? 'bg-[#0f172a] text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>General</button>
-            <button onClick={() => setSubTab('repaso_lateral')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'repaso_lateral' ? 'bg-indigo-600 text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Repaso / Lateral</button>
-            <button onClick={() => setSubTab('transferencia')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'transferencia' ? 'bg-[#8b3d6a] text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Transferencia</button>
+          <div className="bg-white border-b border-slate-200 px-10 py-4 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0 shadow-sm z-10">
+            <div className="flex gap-4 overflow-x-auto no-scrollbar">
+                <button onClick={() => setSubTab('recoleccion')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'recoleccion' ? 'bg-[#0f172a] text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>General</button>
+                <button onClick={() => setSubTab('repaso_lateral')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'repaso_lateral' ? 'bg-indigo-600 text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Repaso / Lateral</button>
+                <button onClick={() => setSubTab('transferencia')} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${subTab === 'transferencia' ? 'bg-[#8b3d6a] text-white shadow-xl' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>Transferencia</button>
+            </div>
+            
+            {shiftFilter !== 'TODOS' && (
+                <div className="flex-1 max-w-2xl w-full">
+                    <ShiftManagersTop 
+                        shift={shiftFilter} 
+                        data={shiftsMetadata[shiftFilter]} 
+                        onChange={handleUpdateMetadata} 
+                    />
+                </div>
+            )}
           </div>
         )}
 

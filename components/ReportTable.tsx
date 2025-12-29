@@ -1,13 +1,13 @@
 
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus, AbsenceReason } from '../types';
-import React, { useState } from 'react';
-// Added missing Users icon import
-import { Search, Lock, Trash2, X, Users } from 'lucide-react';
+import React from 'react';
+import { Lock, Trash2 } from 'lucide-react';
 
 interface ReportTableProps {
   data: RouteRecord[];
   onUpdateRecord?: (id: string, field: keyof RouteRecord, value: any) => void;
   onDeleteRecord?: (id: string) => void;
+  onOpenPicker: (id: string, field: string, role: string) => void;
   activeShiftLabel?: string;
   staffList?: StaffMember[];
 }
@@ -96,29 +96,8 @@ const StaffCell: React.FC<{
   );
 };
 
-export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, activeShiftLabel, staffList = [] }) => {
-  const [pickerState, setPickerState] = useState<{ id: string, field: keyof RouteRecord, role: string } | null>(null);
-  const [pickerSearch, setPickerSearch] = useState('');
-
-  const handleSelectStaff = (staff: StaffMember | null) => {
-    if (pickerState && onUpdateRecord) {
-        onUpdateRecord(pickerState.id, pickerState.field, staff);
-    }
-    setPickerState(null);
-    setPickerSearch('');
-  };
-
-  const filteredStaffForPicker = staffList.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || s.id.includes(pickerSearch);
-    const matchesRole = pickerState?.role.includes('CHOFER') ? s.role === 'CHOFER' : s.role === 'AUXILIAR';
-    return matchesSearch && matchesRole;
-  }).sort((a, b) => {
-    if (a.status === StaffStatus.ABSENT && b.status !== StaffStatus.ABSENT) return 1;
-    if (a.status !== StaffStatus.ABSENT && b.status === StaffStatus.ABSENT) return -1;
-    return a.name.localeCompare(b.name);
-  });
-
-  const renderRow = (r: RouteRecord, idx: number) => {
+export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, activeShiftLabel }) => {
+  const renderRow = (r: RouteRecord) => {
     const titulares = [r.aux1, r.aux2, r.aux3, r.aux4];
     const activosTitularesCount = titulares.filter(a => a !== null && a.status !== StaffStatus.ABSENT).length;
     const canEnableSupl1 = (4 - activosTitularesCount) >= 1;
@@ -139,15 +118,15 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
           {r.reinforcement || '-'}
         </td>
         
-        <StaffCell staff={r.driver} role="CHOFER" onClick={() => setPickerState({ id: r.id, field: 'driver', role: 'CHOFER' })} />
-        <StaffCell staff={r.aux1} role="AUXILIAR" onClick={() => setPickerState({ id: r.id, field: 'aux1', role: 'AUXILIAR' })} />
-        <StaffCell staff={r.aux2} role="AUXILIAR" onClick={() => setPickerState({ id: r.id, field: 'aux2', role: 'AUXILIAR' })} />
-        <StaffCell staff={r.aux3} role="AUXILIAR" onClick={() => setPickerState({ id: r.id, field: 'aux3', role: 'AUXILIAR' })} />
-        <StaffCell staff={r.aux4} role="AUXILIAR" onClick={() => setPickerState({ id: r.id, field: 'aux4', role: 'AUXILIAR' })} />
+        <StaffCell staff={r.driver} role="CHOFER" onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} />
+        <StaffCell staff={r.aux1} role="AUXILIAR" onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} />
+        <StaffCell staff={r.aux2} role="AUXILIAR" onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} />
+        <StaffCell staff={r.aux3} role="AUXILIAR" onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} />
+        <StaffCell staff={r.aux4} role="AUXILIAR" onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} />
 
-        <StaffCell staff={r.replacementDriver} role="CHOFER" isSuplente onClick={() => setPickerState({ id: r.id, field: 'replacementDriver', role: 'CHOFER SUPLENTE' })} />
-        <StaffCell staff={r.replacementAux1} role="AUXILIAR" isSuplente isDisabled={!canEnableSupl1 && !r.replacementAux1} onClick={() => setPickerState({ id: r.id, field: 'replacementAux1', role: 'AUX SUPLENTE' })} />
-        <StaffCell staff={r.replacementAux2} role="AUXILIAR" isSuplente isDisabled={!canEnableSupl2 && !r.replacementAux2} onClick={() => setPickerState({ id: r.id, field: 'replacementAux2', role: 'AUX SUPLENTE' })} />
+        <StaffCell staff={r.replacementDriver} role="CHOFER" isSuplente onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER SUPLENTE')} />
+        <StaffCell staff={r.replacementAux1} role="AUXILIAR" isSuplente isDisabled={!canEnableSupl1 && !r.replacementAux1} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUX SUPLENTE')} />
+        <StaffCell staff={r.replacementAux2} role="AUXILIAR" isSuplente isDisabled={!canEnableSupl2 && !r.replacementAux2} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUX SUPLENTE')} />
 
         <td className="border border-slate-300 bg-white">
           <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full bg-transparent border-none outline-none text-[10px] font-black uppercase text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
@@ -169,7 +148,13 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
           <input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} placeholder="0.0" className="w-full h-full bg-transparent border-none text-center outline-none font-black text-sm" />
         </td>
         <td className="sticky right-0 bg-slate-50 border border-slate-300 text-center z-20">
-             <button onClick={() => onDeleteRecord?.(r.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-400 hover:text-red-600 transition-all"><Trash2 size={16} /></button>
+             <button 
+                onClick={(e) => { e.stopPropagation(); onDeleteRecord?.(r.id); }} 
+                className="opacity-0 group-hover:opacity-100 p-2 text-red-400 hover:text-red-600 transition-all hover:bg-red-50 rounded-lg active:scale-90"
+                title="Eliminar Zona del Parte"
+             >
+                <Trash2 size={16} />
+             </button>
         </td>
       </tr>
     );
@@ -177,7 +162,6 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
 
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
-      {/* HEADER FIJO SUPERIOR DE LA TABLA */}
       <div className="bg-[#1e293b] text-white px-10 py-4 flex justify-between items-center shrink-0 shadow-lg relative z-30">
         <div className="flex items-center gap-4">
             <div className="w-2 h-8 bg-indigo-500 rounded-full"></div>
@@ -189,7 +173,6 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
         </div>
       </div>
 
-      {/* CONTENEDOR CON SCROLL HORIZONTAL Y VERTICAL */}
       <div className="flex-1 overflow-auto bg-white">
         <table className="border-collapse text-[11px] w-full min-w-[3200px] table-fixed">
           <thead className="sticky top-0 z-30 bg-slate-50 text-slate-500 font-black uppercase text-[9px] border-b border-slate-300 shadow-md">
@@ -215,42 +198,10 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 bg-white">
-            {data.map((r, idx) => renderRow(r, idx))}
+            {data.map((r) => renderRow(r))}
           </tbody>
         </table>
       </div>
-
-      {pickerState && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
-                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                        <Users className="text-indigo-400" />
-                        <h3 className="text-lg font-black uppercase tracking-widest leading-none">ASIGNAR {pickerState.role}</h3>
-                    </div>
-                    <button onClick={() => setPickerState(null)} className="p-3 hover:bg-white/10 rounded-2xl transition-all"><X size={24} /></button>
-                </div>
-                <div className="p-8">
-                    <div className="relative mb-6">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input autoFocus type="text" placeholder="BUSCAR POR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all" />
-                    </div>
-                    <div className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                        <button onClick={() => handleSelectStaff(null)} className="w-full p-4 text-center text-red-500 font-black text-[11px] uppercase border-2 border-red-50 rounded-2xl hover:bg-red-50 transition-all mb-4">Quitar Selección Actual</button>
-                        {filteredStaffForPicker.map(s => (
-                            <button key={s.id} onClick={() => handleSelectStaff(s)} className="w-full flex items-center justify-between p-5 rounded-2xl border border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all group">
-                                <div className="text-left">
-                                    <p className="text-[12px] font-black text-slate-800 uppercase leading-none group-hover:text-indigo-700 transition-colors">{s.name}</p>
-                                    <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role}</p>
-                                </div>
-                                <span className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${s.status === StaffStatus.ABSENT ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-emerald-50 text-emerald-500 border border-emerald-100'}`}>{s.status}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
     </div>
   );
 };

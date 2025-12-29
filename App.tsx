@@ -210,66 +210,65 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-24 bg-white border-b border-slate-200 px-10 flex items-center justify-between shrink-0 z-40 shadow-sm">
-          <div className="flex items-center gap-8">
+      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+        <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 shadow-sm">
+          <div className="flex items-center gap-6">
               <div>
-                  <h1 className="text-2xl font-black text-slate-800 tracking-tight uppercase leading-none">
+                  <h1 className="text-xl font-black text-slate-800 tracking-tight uppercase leading-none">
                       {activeTab === 'parte' ? 'Parte Operativo' : 'Padrón de Personal'}
                   </h1>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-2 flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${isToday ? 'bg-emerald-500 animate-pulse' : 'bg-orange-400'}`}></div>
-                    {isToday ? 'CONTROL EN VIVO' : `ARCHIVO HISTÓRICO: ${selectedDate.split('-').reverse().join('/')}`}
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1 flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-emerald-500 animate-pulse' : 'bg-orange-400'}`}></div>
+                    {isToday ? 'EN VIVO' : `${selectedDate.split('-').reverse().join('/')}`}
                   </p>
               </div>
 
-              <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-inner">
-                  <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 hover:bg-white rounded-xl text-slate-400 hover:text-indigo-600 transition-all shadow-sm border border-transparent hover:border-slate-100"><ChevronLeft size={20} /></button>
-                  <div className="flex items-center gap-3 px-4">
-                      <CalendarIcon size={16} className="text-indigo-500" />
-                      <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-600 outline-none uppercase cursor-pointer" />
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                  <button onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1.5 hover:bg-white rounded-lg text-slate-400 hover:text-indigo-600 transition-all"><ChevronLeft size={16} /></button>
+                  <div className="flex items-center gap-2 px-2">
+                      <CalendarIcon size={14} className="text-indigo-500" />
+                      <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[10px] font-black text-slate-600 outline-none uppercase cursor-pointer" />
                   </div>
-                  <button disabled={isToday} onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className={`p-2 rounded-xl transition-all ${isToday ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white text-slate-400 hover:text-indigo-600 shadow-sm border border-transparent hover:border-slate-100'}`}><ChevronRight size={20} /></button>
-                  {!isToday && <button onClick={() => setSelectedDate(todayStr)} className="ml-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-xl shadow-indigo-200"><RotateCcw size={14} /> VOLVER A HOY</button>}
+                  <button disabled={isToday} onClick={() => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className={`p-1.5 rounded-lg transition-all ${isToday ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white text-slate-400 hover:text-indigo-600'}`}><ChevronRight size={16} /></button>
               </div>
           </div>
 
-          <div className="flex items-center gap-3">
-             <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl shadow-emerald-200 hover:bg-emerald-700 active:scale-95 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">
-                <CheckCircle2 size={20} /> Cierre Turno
+          <div className="flex items-center gap-2">
+             <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-700 active:scale-95 transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                <CheckCircle2 size={16} /> Cierre Turno
              </button>
-             <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-[#6366f1] text-white px-6 py-4 rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest border border-indigo-500/20">
-                <Plus size={20} /> Añadir Ruta
+             <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-[#6366f1] text-white px-4 py-2.5 rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                <Plus size={16} /> Añadir Ruta
              </button>
-             <button className="bg-slate-800 text-white px-6 py-4 rounded-2xl shadow-xl hover:bg-slate-900 active:scale-95 transition-all flex items-center gap-3 text-[10px] font-black uppercase tracking-widest">
-                <Save size={20} /> Guardar
+             <button className="bg-slate-800 text-white px-4 py-2.5 rounded-xl shadow-lg hover:bg-slate-900 active:scale-95 transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                <Save size={16} /> Guardar
              </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
-            <div className="max-w-[1700px] mx-auto space-y-8 pb-20">
+        <div className="flex-1 overflow-hidden p-4 bg-[#f8fafc] flex flex-col gap-4">
+            <div className="max-w-[1800px] w-full mx-auto flex flex-col h-full space-y-4">
                 {activeTab === 'parte' && (
-                    <div className="flex flex-col gap-8">
-                        <div className="bg-white p-8 rounded-[3rem] border border-slate-200 shadow-sm space-y-8">
-                            <div className="flex flex-col lg:flex-row items-center justify-between gap-8 border-b border-slate-100 pb-8">
-                                <div className="flex bg-slate-100 p-2 rounded-[2rem] border border-slate-200 shadow-inner">
+                    <>
+                        <div className="bg-white p-4 rounded-[1.5rem] border border-slate-200 shadow-sm space-y-4 shrink-0">
+                            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
                                     {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
-                                        <button key={s} onClick={() => setShiftFilter(s)} className={`px-10 py-3 text-[10px] font-black rounded-2xl transition-all ${shiftFilter === s ? 'bg-white shadow-xl text-indigo-600 scale-[1.05]' : 'text-slate-400 hover:text-slate-600'}`}>{s}</button>
+                                        <button key={s} onClick={() => setShiftFilter(s)} className={`px-6 py-2 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{s}</button>
                                     ))}
                                 </div>
                                 <div className="relative flex-1 max-w-xl">
-                                    <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
-                                    <input type="text" placeholder="BUSCAR POR RUTA, INTERNO O PERSONAL..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-16 pr-6 py-5 bg-slate-50 border border-slate-200 rounded-[2rem] text-[11px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all uppercase placeholder:text-slate-300" />
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
+                                    <input type="text" placeholder="BUSCAR RUTA, INTERNO O PERSONAL..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all uppercase placeholder:text-slate-300" />
                                 </div>
                             </div>
-                            <div className="flex flex-col xl:flex-row items-center justify-between gap-8">
-                                <div className="flex items-center gap-4">
-                                    <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN GENERAL" onClick={() => setSubTab('GENERAL')} />
+                            <div className="flex flex-col xl:flex-row items-center justify-between gap-4">
+                                <div className="flex items-center gap-2">
+                                    <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN" onClick={() => setSubTab('GENERAL')} />
                                     <SubTabButton active={subTab === 'REPASO'} label="REPASO / LATERAL" onClick={() => setSubTab('REPASO')} />
-                                    <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TRANSFERENCIA / TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
+                                    <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
                                 </div>
-                                <div className="flex-1 flex items-center gap-6">
+                                <div className="flex-1 flex items-center gap-4">
                                     <ShiftManagersTop 
                                         shift={shiftFilter} 
                                         data={shiftMetadata} 
@@ -279,9 +278,9 @@ const App: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden min-h-[500px] animate-in fade-in duration-700">
+                        <div className="flex-1 bg-white rounded-[2rem] shadow-2xl border border-slate-200 overflow-hidden min-h-0">
                             {subTab === 'TRANSFERENCIA' ? (
-                                <div className="overflow-x-auto">
+                                <div className="h-full overflow-auto">
                                   <TransferTable 
                                       data={transferRecords.filter(t => shiftFilter === 'TODOS' || t.shift === shiftFilter)} 
                                       staffList={staffList} 
@@ -300,18 +299,20 @@ const App: React.FC = () => {
                                 />
                             )}
                         </div>
-                    </div>
+                    </>
                 )}
 
                 {activeTab === 'personal' && (
-                    <StaffManagement 
-                        staffList={staffList} 
-                        onUpdateStaff={handleUpdateStaff} 
-                        onAddStaff={(m) => setStaffList([...staffList, m])} 
-                        onRemoveStaff={(id) => setStaffList(staffList.filter(s => s.id !== id))} 
-                        records={records} 
-                        selectedShift={shiftFilter} 
-                    />
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                      <StaffManagement 
+                          staffList={staffList} 
+                          onUpdateStaff={handleUpdateStaff} 
+                          onAddStaff={(m) => setStaffList([...staffList, m])} 
+                          onRemoveStaff={(id) => setStaffList(staffList.filter(s => s.id !== id))} 
+                          records={records} 
+                          selectedShift={shiftFilter} 
+                      />
+                    </div>
                 )}
             </div>
         </div>
@@ -320,7 +321,7 @@ const App: React.FC = () => {
       {/* MODAL GLOBAL DE SELECCIÓN DE PERSONAL */}
       {pickerState && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
                 <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <Users className="text-indigo-400" />
@@ -360,14 +361,14 @@ const App: React.FC = () => {
 };
 
 const SidebarItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void }> = ({ active, icon, label, onClick }) => (
-    <button onClick={onClick} className={`w-full flex items-center gap-5 px-6 py-5 rounded-[1.5rem] transition-all duration-300 ${active ? 'bg-emerald-600 text-white shadow-2xl shadow-emerald-900/40 translate-x-1' : 'text-slate-500 hover:text-white hover:bg-white/5 hover:translate-x-1'}`}>
+    <button onClick={onClick} className={`w-full flex items-center gap-5 px-6 py-4 rounded-[1.2rem] transition-all duration-300 ${active ? 'bg-emerald-600 text-white shadow-xl shadow-emerald-900/40 translate-x-1' : 'text-slate-500 hover:text-white hover:bg-white/5 hover:translate-x-1'}`}>
         <span className={active ? 'text-white' : 'text-slate-600'}>{icon}</span>
-        <span className="text-[12px] font-black uppercase tracking-widest">{label}</span>
+        <span className="text-[11px] font-black uppercase tracking-widest">{label}</span>
     </button>
 );
 
 const SubTabButton: React.FC<{ active: boolean, label: string, onClick: () => void }> = ({ active, label, onClick }) => (
-    <button onClick={onClick} className={`px-8 py-4 text-[11px] font-black rounded-2xl transition-all border-2 ${active ? 'bg-[#111827] text-white border-[#111827] shadow-2xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>{label}</button>
+    <button onClick={onClick} className={`px-5 py-2 text-[9px] font-black rounded-xl transition-all border-2 ${active ? 'bg-[#111827] text-white border-[#111827] shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>{label}</button>
 );
 
 export default App;

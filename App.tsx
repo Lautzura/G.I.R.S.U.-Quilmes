@@ -25,7 +25,8 @@ import {
     Save,
     RotateCcw,
     Plus,
-    CheckCircle2
+    CheckCircle2,
+    X
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -44,13 +45,22 @@ const App: React.FC = () => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
+  // Estado para el buscador global de personal
+  const [pickerState, setPickerState] = useState<{ 
+    type: 'route' | 'meta' | 'transfer',
+    targetId: string, 
+    field: string, 
+    role: string,
+    unitIdx?: number 
+  } | null>(null);
+  const [pickerSearch, setPickerSearch] = useState('');
+
   const todayStr = new Date().toISOString().split('T')[0];
   const isToday = selectedDate === todayStr;
 
   // Sincronización Padrón -> Parte Operativo y Tolva
   const handleUpdateStaff = (updatedMember: StaffMember) => {
     setStaffList(prev => prev.map(s => s.id === updatedMember.id ? updatedMember : s));
-
     setRecords(prev => prev.map(r => ({
       ...r,
       driver: r.driver?.id === updatedMember.id ? updatedMember : r.driver,
@@ -62,25 +72,12 @@ const App: React.FC = () => {
       replacementAux1: r.replacementAux1?.id === updatedMember.id ? updatedMember : r.replacementAux1,
       replacementAux2: r.replacementAux2?.id === updatedMember.id ? updatedMember : r.replacementAux2,
     })));
+  };
 
-    setTransferRecords(prev => prev.map(tr => ({
-      ...tr,
-      maquinista: tr.maquinista?.id === updatedMember.id ? updatedMember : tr.maquinista,
-      encargado: tr.encargado?.id === updatedMember.id ? updatedMember : tr.encargado,
-      balancero1: tr.balancero1?.id === updatedMember.id ? updatedMember : tr.balancero1,
-      balancero2: tr.balancero2?.id === updatedMember.id ? updatedMember : tr.balancero2,
-      auxTolva1: tr.auxTolva1?.id === updatedMember.id ? updatedMember : tr.auxTolva1,
-      auxTolva2: tr.auxTolva2?.id === updatedMember.id ? updatedMember : tr.auxTolva2,
-      auxTolva3: tr.auxTolva3?.id === updatedMember.id ? updatedMember : tr.auxTolva3,
-      auxTransferencia1: tr.auxTransferencia1?.id === updatedMember.id ? updatedMember : tr.auxTransferencia1,
-      auxTransferencia2: tr.auxTransferencia2?.id === updatedMember.id ? updatedMember : tr.auxTransferencia2,
-      lonero: tr.lonero?.id === updatedMember.id ? updatedMember : tr.lonero,
-      suplenciaLona: tr.suplenciaLona?.id === updatedMember.id ? updatedMember : tr.suplenciaLona,
-      units: tr.units.map(u => ({
-        ...u,
-        driver: u.driver?.id === updatedMember.id ? updatedMember : u.driver
-      })) as [TransferUnit, TransferUnit, TransferUnit]
-    })));
+  const handleDeleteRecord = (id: string) => {
+    if (window.confirm('¿Está seguro de que desea eliminar esta zona del parte?')) {
+      setRecords(prev => prev.filter(r => r.id !== id));
+    }
   };
 
   const generateInitialDayData = (date: string) => {
@@ -153,6 +150,42 @@ const App: React.FC = () => {
     return res;
   }, [records, shiftFilter, searchTerm, subTab]);
 
+  const handleSelectFromPicker = (staff: StaffMember | null) => {
+    if (!pickerState) return;
+
+    if (pickerState.type === 'route') {
+      setRecords(prev => prev.map(r => r.id === pickerState.targetId ? { ...r, [pickerState.field]: staff } : r));
+    } else if (pickerState.type === 'meta') {
+      setShiftMetadata(prev => ({ ...prev, [pickerState.field]: staff ? staff.name : '' }));
+    } else if (pickerState.type === 'transfer') {
+      setTransferRecords(prev => prev.map(tr => {
+        if (tr.id === pickerState.targetId) {
+          if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) {
+            const newUnits = [...tr.units] as [TransferUnit, TransferUnit, TransferUnit];
+            newUnits[pickerState.unitIdx] = { ...newUnits[pickerState.unitIdx], driver: staff };
+            return { ...tr, units: newUnits };
+          }
+          return { ...tr, [pickerState.field]: staff };
+        }
+        return tr;
+      }));
+    }
+
+    setPickerState(null);
+    setPickerSearch('');
+  };
+
+  const filteredStaffForPicker = useMemo(() => {
+    return staffList.filter(s => {
+      const matchesSearch = s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || s.id.includes(pickerSearch);
+      return matchesSearch;
+    }).sort((a, b) => {
+      if (a.status === StaffStatus.ABSENT && b.status !== StaffStatus.ABSENT) return 1;
+      if (a.status !== StaffStatus.ABSENT && b.status === StaffStatus.ABSENT) return -1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [staffList, pickerSearch]);
+
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden font-['Plus_Jakarta_Sans']">
       <aside className="w-64 bg-[#111827] text-white flex flex-col shrink-0 shadow-2xl z-50">
@@ -214,7 +247,6 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* CONTENIDO PRINCIPAL SCROLLABLE */}
         <div className="flex-1 overflow-y-auto p-8 bg-[#f8fafc]">
             <div className="max-w-[1700px] mx-auto space-y-8 pb-20">
                 {activeTab === 'parte' && (
@@ -238,12 +270,15 @@ const App: React.FC = () => {
                                     <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TRANSFERENCIA / TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
                                 </div>
                                 <div className="flex-1 flex items-center gap-6">
-                                    <ShiftManagersTop shift={shiftFilter} data={shiftMetadata} onChange={(f, v) => setShiftMetadata(prev => ({...prev, [f]: v}))} />
+                                    <ShiftManagersTop 
+                                        shift={shiftFilter} 
+                                        data={shiftMetadata} 
+                                        onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })}
+                                    />
                                 </div>
                             </div>
                         </div>
 
-                        {/* CONTENEDOR DE LA TABLA: Sin max-h restrictivo, pero con scroll horizontal */}
                         <div className="bg-white rounded-[3rem] shadow-2xl border border-slate-200 overflow-hidden min-h-[500px] animate-in fade-in duration-700">
                             {subTab === 'TRANSFERENCIA' ? (
                                 <div className="overflow-x-auto">
@@ -251,6 +286,7 @@ const App: React.FC = () => {
                                       data={transferRecords.filter(t => shiftFilter === 'TODOS' || t.shift === shiftFilter)} 
                                       staffList={staffList} 
                                       onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} 
+                                      onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })}
                                   />
                                 </div>
                             ) : (
@@ -258,6 +294,8 @@ const App: React.FC = () => {
                                     data={filteredRecords} 
                                     staffList={staffList} 
                                     onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} 
+                                    onDeleteRecord={handleDeleteRecord}
+                                    onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })}
                                     activeShiftLabel={isToday ? `Operación ${subTab}` : `Archivo ${subTab}`}
                                 />
                             )}
@@ -278,6 +316,39 @@ const App: React.FC = () => {
             </div>
         </div>
       </main>
+
+      {/* MODAL GLOBAL DE SELECCIÓN DE PERSONAL */}
+      {pickerState && (
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
+                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <Users className="text-indigo-400" />
+                        <h3 className="text-lg font-black uppercase tracking-widest leading-none">ASIGNAR {pickerState.role}</h3>
+                    </div>
+                    <button onClick={() => setPickerState(null)} className="p-3 hover:bg-white/10 rounded-2xl transition-all"><X size={24} /></button>
+                </div>
+                <div className="p-8">
+                    <div className="relative mb-6">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                        <input autoFocus type="text" placeholder="BUSCAR POR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all" />
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                        <button onClick={() => handleSelectFromPicker(null)} className="w-full p-4 text-center text-red-500 font-black text-[11px] uppercase border-2 border-red-50 rounded-2xl hover:bg-red-50 transition-all mb-4">Quitar Selección Actual</button>
+                        {filteredStaffForPicker.map(s => (
+                            <button key={s.id} onClick={() => handleSelectFromPicker(s)} className="w-full flex items-center justify-between p-5 rounded-2xl border border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all group">
+                                <div className="text-left">
+                                    <p className="text-[12px] font-black text-slate-800 uppercase leading-none group-hover:text-indigo-700 transition-colors">{s.name}</p>
+                                    <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role}</p>
+                                </div>
+                                <span className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${s.status === StaffStatus.ABSENT ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-emerald-50 text-emerald-500 border border-emerald-100'}`}>{s.status}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
       <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => {

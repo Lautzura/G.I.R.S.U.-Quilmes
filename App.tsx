@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
+import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit, AbsenceReason } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
 import { ShiftManagersTop } from './components/ShiftManagers';
@@ -26,7 +26,10 @@ import {
     RotateCcw,
     Plus,
     CheckCircle2,
-    X
+    X,
+    UserMinus,
+    UserCheck,
+    Star
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -45,7 +48,6 @@ const App: React.FC = () => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  // Estado para el buscador global de personal
   const [pickerState, setPickerState] = useState<{ 
     type: 'route' | 'meta' | 'transfer',
     targetId: string, 
@@ -54,11 +56,11 @@ const App: React.FC = () => {
     unitIdx?: number 
   } | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
+  const [expandingAbsenceId, setExpandingAbsenceId] = useState<string | null>(null);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const isToday = selectedDate === todayStr;
 
-  // Sincronización Padrón -> Parte Operativo y Tolva
   const handleUpdateStaff = (updatedMember: StaffMember) => {
     setStaffList(prev => prev.map(s => s.id === updatedMember.id ? updatedMember : s));
     setRecords(prev => prev.map(r => ({
@@ -72,6 +74,18 @@ const App: React.FC = () => {
       replacementAux1: r.replacementAux1?.id === updatedMember.id ? updatedMember : r.replacementAux1,
       replacementAux2: r.replacementAux2?.id === updatedMember.id ? updatedMember : r.replacementAux2,
     })));
+  };
+
+  const toggleStaffStatusFromPicker = (e: React.MouseEvent, staff: StaffMember, reason?: string) => {
+    e.stopPropagation();
+    const newStatus = staff.status === StaffStatus.ABSENT ? StaffStatus.PRESENT : StaffStatus.ABSENT;
+    const updated = { 
+        ...staff, 
+        status: newStatus, 
+        address: newStatus === StaffStatus.ABSENT ? (reason || AbsenceReason.FALTA_SIN_AVISO) : '' 
+    };
+    handleUpdateStaff(updated);
+    if (newStatus === StaffStatus.ABSENT) setExpandingAbsenceId(null);
   };
 
   const handleDeleteRecord = (id: string) => {
@@ -152,6 +166,9 @@ const App: React.FC = () => {
 
   const handleSelectFromPicker = (staff: StaffMember | null) => {
     if (!pickerState) return;
+    if (staff && staff.status === StaffStatus.ABSENT) {
+        if (!window.confirm(`El colaborador ${staff.name} está marcado como AUSENTE por ${staff.address}. ¿Desea asignarlo de todas formas?`)) return;
+    }
 
     if (pickerState.type === 'route') {
       setRecords(prev => prev.map(r => r.id === pickerState.targetId ? { ...r, [pickerState.field]: staff } : r));
@@ -175,16 +192,56 @@ const App: React.FC = () => {
     setPickerSearch('');
   };
 
+  // Lógica para identificar quién está seleccionado actualmente para priorizarlo en la lista
+  const currentlySelectedStaffId = useMemo(() => {
+    if (!pickerState) return null;
+    if (pickerState.type === 'route') {
+      const record = records.find(r => r.id === pickerState.targetId);
+      return record ? (record[pickerState.field as keyof RouteRecord] as StaffMember)?.id : null;
+    }
+    if (pickerState.type === 'transfer') {
+      const tr = transferRecords.find(t => t.id === pickerState.targetId);
+      if (!tr) return null;
+      if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) {
+          return tr.units[pickerState.unitIdx].driver?.id;
+      }
+      return (tr[pickerState.field as keyof TransferRecord] as StaffMember)?.id;
+    }
+    return null;
+  }, [pickerState, records, transferRecords]);
+
   const filteredStaffForPicker = useMemo(() => {
-    return staffList.filter(s => {
+    if (!pickerState) return [];
+    
+    // 1. Filtrar por búsqueda
+    let list = staffList.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || s.id.includes(pickerSearch);
       return matchesSearch;
-    }).sort((a, b) => {
-      if (a.status === StaffStatus.ABSENT && b.status !== StaffStatus.ABSENT) return 1;
+    });
+
+    // 2. Filtrar por rol (si es CHOFER o AUXILIAR)
+    const targetRole = pickerState.role.toUpperCase();
+    if (targetRole.includes('CHOFER')) {
+      list = list.filter(s => s.role === 'CHOFER');
+    } else if (targetRole.includes('AUXILIAR') || targetRole.includes('AUX')) {
+      list = list.filter(s => s.role === 'AUXILIAR');
+    } else if (targetRole.includes('MAQUINISTA')) {
+      list = list.filter(s => s.role === 'MAQUINISTA');
+    }
+
+    // 3. Ordenar: El seleccionado primero, luego por status, luego por nombre
+    return list.sort((a, b) => {
+      // Prioridad 1: El actualmente asignado
+      if (a.id === currentlySelectedStaffId) return -1;
+      if (b.id === currentlySelectedStaffId) return 1;
+
+      // Prioridad 2: No ausentes primero
       if (a.status !== StaffStatus.ABSENT && b.status === StaffStatus.ABSENT) return -1;
+      if (a.status === StaffStatus.ABSENT && b.status !== StaffStatus.ABSENT) return 1;
+      
       return a.name.localeCompare(b.name);
     });
-  }, [staffList, pickerSearch]);
+  }, [staffList, pickerSearch, pickerState, currentlySelectedStaffId]);
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden font-['Plus_Jakarta_Sans']">
@@ -321,31 +378,92 @@ const App: React.FC = () => {
       {/* MODAL GLOBAL DE SELECCIÓN DE PERSONAL */}
       {pickerState && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200">
-                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300 border border-slate-200 flex flex-col max-h-[90vh]">
+                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
                         <Users className="text-indigo-400" />
                         <h3 className="text-lg font-black uppercase tracking-widest leading-none">ASIGNAR {pickerState.role}</h3>
                     </div>
                     <button onClick={() => setPickerState(null)} className="p-3 hover:bg-white/10 rounded-2xl transition-all"><X size={24} /></button>
                 </div>
-                <div className="p-8">
-                    <div className="relative mb-6">
+                
+                <div className="p-6 shrink-0 bg-slate-50/50 border-b">
+                    <div className="relative">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
-                        <input autoFocus type="text" placeholder="BUSCAR POR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all" />
+                        <input autoFocus type="text" placeholder="BUSCAR POR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-white border border-slate-200 rounded-2xl text-[11px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-sm" />
                     </div>
-                    <div className="max-h-[400px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                        <button onClick={() => handleSelectFromPicker(null)} className="w-full p-4 text-center text-red-500 font-black text-[11px] uppercase border-2 border-red-50 rounded-2xl hover:bg-red-50 transition-all mb-4">Quitar Selección Actual</button>
-                        {filteredStaffForPicker.map(s => (
-                            <button key={s.id} onClick={() => handleSelectFromPicker(s)} className="w-full flex items-center justify-between p-5 rounded-2xl border border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all group">
-                                <div className="text-left">
-                                    <p className="text-[12px] font-black text-slate-800 uppercase leading-none group-hover:text-indigo-700 transition-colors">{s.name}</p>
-                                    <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role}</p>
-                                </div>
-                                <span className={`text-[10px] font-black px-3 py-1.5 rounded-xl ${s.status === StaffStatus.ABSENT ? 'bg-red-50 text-red-500 border border-red-100' : 'bg-emerald-50 text-emerald-500 border border-emerald-100'}`}>{s.status}</span>
-                            </button>
-                        ))}
-                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
+                    <button onClick={() => handleSelectFromPicker(null)} className="w-full p-4 text-center text-red-500 font-black text-[11px] uppercase border-2 border-red-50 rounded-2xl hover:bg-red-100 transition-all mb-4 bg-red-50/30">
+                        Quitar Selección Actual
+                    </button>
+                    
+                    {filteredStaffForPicker.map(s => {
+                        const isCurrentlySelected = s.id === currentlySelectedStaffId;
+                        return (
+                            <div key={s.id} className="relative group">
+                                <button 
+                                    onClick={() => handleSelectFromPicker(s)} 
+                                    className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all text-left ${isCurrentlySelected ? 'border-indigo-500 bg-indigo-50/30' : s.status === StaffStatus.ABSENT ? 'bg-red-50/30 border-red-100' : 'bg-white border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 shadow-sm'}`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {isCurrentlySelected && <Star size={16} className="text-indigo-600 fill-indigo-600 animate-pulse shrink-0" />}
+                                        <div>
+                                            <p className={`text-[12px] font-black uppercase leading-none transition-colors ${isCurrentlySelected ? 'text-indigo-800' : s.status === StaffStatus.ABSENT ? 'text-red-800' : 'text-slate-800 group-hover:text-indigo-700'}`}>{s.name}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role}</p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-[9px] font-black px-2.5 py-1.5 rounded-xl border shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-500 text-white border-red-600' : s.status === StaffStatus.RESERVA ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                                            {s.status === StaffStatus.ABSENT ? (s.address || 'AUSENTE') : s.status}
+                                        </span>
+                                        
+                                        <div 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (s.status === StaffStatus.ABSENT) {
+                                                    toggleStaffStatusFromPicker(e, s);
+                                                } else {
+                                                    setExpandingAbsenceId(expandingAbsenceId === s.id ? null : s.id);
+                                                }
+                                            }}
+                                            className={`p-2 rounded-xl transition-all shadow-sm border ${s.status === StaffStatus.ABSENT ? 'bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-600' : 'bg-red-500 text-white border-red-600 hover:bg-red-600'}`}
+                                            title={s.status === StaffStatus.ABSENT ? "Marcar Presente" : "Marcar Falta"}
+                                        >
+                                            {s.status === StaffStatus.ABSENT ? <UserCheck size={14} /> : <UserMinus size={14} />}
+                                        </div>
+                                    </div>
+                                </button>
+
+                                {expandingAbsenceId === s.id && (
+                                    <div className="mt-2 p-3 bg-white border-2 border-red-100 rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200 z-10 grid grid-cols-2 gap-1.5">
+                                        <p className="col-span-2 text-[8px] font-black text-red-500 uppercase tracking-widest px-2 mb-1">Motivo de la ausencia:</p>
+                                        {Object.values(AbsenceReason).slice(0, 8).map(reason => (
+                                            <button 
+                                                key={reason}
+                                                onClick={(e) => toggleStaffStatusFromPicker(e, s, reason)}
+                                                className="px-3 py-2 bg-red-50 hover:bg-red-500 hover:text-white rounded-lg text-[9px] font-black uppercase text-red-600 transition-all text-center border border-red-100"
+                                            >
+                                                {reason}
+                                            </button>
+                                        ))}
+                                        <button 
+                                            onClick={() => setExpandingAbsenceId(null)}
+                                            className="col-span-2 mt-1 py-1 text-[8px] font-black text-slate-400 uppercase hover:text-slate-600"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+                
+                <div className="p-4 bg-slate-50 border-t text-center shrink-0">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.2em]">Seleccione un colaborador para asignar a la ruta</p>
                 </div>
             </div>
         </div>

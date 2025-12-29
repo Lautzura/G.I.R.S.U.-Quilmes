@@ -207,8 +207,13 @@ const App: React.FC = () => {
       }
       return (tr[pickerState.field as keyof TransferRecord] as StaffMember)?.id;
     }
+    if (pickerState.type === 'meta') {
+      const currentName = shiftMetadata[pickerState.field as keyof ShiftMetadata] as string;
+      const found = staffList.find(s => s.name === currentName);
+      return found ? found.id : null;
+    }
     return null;
-  }, [pickerState, records, transferRecords]);
+  }, [pickerState, records, transferRecords, shiftMetadata, staffList]);
 
   const filteredStaffForPicker = useMemo(() => {
     if (!pickerState) return [];
@@ -329,6 +334,7 @@ const App: React.FC = () => {
                                     <ShiftManagersTop 
                                         shift={shiftFilter} 
                                         data={shiftMetadata} 
+                                        staffList={staffList}
                                         onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })}
                                     />
                                 </div>
@@ -440,7 +446,7 @@ const App: React.FC = () => {
                                 {expandingAbsenceId === s.id && (
                                     <div className="mt-2 p-3 bg-white border-2 border-red-100 rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200 z-10 grid grid-cols-2 gap-1.5">
                                         <p className="col-span-2 text-[8px] font-black text-red-500 uppercase tracking-widest px-2 mb-1">Motivo de la ausencia:</p>
-                                        {Object.values(AbsenceReason).slice(0, 8).map(reason => (
+                                        {Object.values(AbsenceReason).map(reason => (
                                             <button 
                                                 key={reason}
                                                 onClick={(e) => toggleStaffStatusFromPicker(e, s, reason)}

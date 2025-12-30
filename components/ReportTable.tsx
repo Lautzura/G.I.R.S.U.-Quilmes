@@ -1,13 +1,14 @@
 
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus } from '../types';
 import React from 'react';
-import { User } from 'lucide-react';
+import { User, CheckCircle2 } from 'lucide-react';
 import { getAbsenceStyles } from '../App';
 
 interface ReportTableProps {
   data: RouteRecord[];
   onUpdateRecord?: (id: string, field: keyof RouteRecord, value: any) => void;
   onOpenPicker: (id: string, field: string, role: string) => void;
+  onUpdateStaff: (staff: StaffMember) => void;
   activeShiftLabel?: string;
 }
 
@@ -16,7 +17,8 @@ const StaffCell: React.FC<{
     role: string; 
     isSuplente?: boolean;
     onClick?: () => void;
-}> = ({ staff, role, isSuplente, onClick }) => {
+    onMarkPresent?: (staff: StaffMember) => void;
+}> = ({ staff, role, isSuplente, onClick, onMarkPresent }) => {
   if (!staff) return (
     <td onClick={onClick} className={`border border-slate-200 cursor-pointer hover:bg-slate-50 ${isSuplente ? 'bg-indigo-50/20' : 'bg-white'}`}>
         <div className="flex flex-col items-center justify-center h-full opacity-30">
@@ -30,7 +32,7 @@ const StaffCell: React.FC<{
   const absenceStyle = isAbsent ? getAbsenceStyles(staff.address || 'FALTA') : '';
   
   return (
-    <td onClick={onClick} className={`border border-slate-200 p-0 min-w-[130px] h-10 cursor-pointer transition-all ${isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-slate-50'}`}>
+    <td onClick={onClick} className={`border border-slate-200 p-0 min-w-[130px] h-10 cursor-pointer transition-all relative group/cell ${isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-slate-50'}`}>
       <div className="flex flex-col items-center justify-center h-full px-1 text-center relative overflow-hidden">
         <span className={`uppercase truncate w-full font-black ${isAbsent ? '' : isSuplente ? 'text-white' : 'text-slate-800'} text-[9px]`}>
           {staff.name}
@@ -46,11 +48,25 @@ const StaffCell: React.FC<{
           )}
         </div>
       </div>
+
+      {/* BOTÓN RÁPIDO PARA MARCAR PRESENTE DESDE EL PARTE */}
+      {isAbsent && (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            onMarkPresent?.({ ...staff, status: StaffStatus.PRESENT, address: '' });
+          }}
+          className="absolute right-1 top-1/2 -translate-y-1/2 bg-emerald-500 text-white p-1 rounded-md opacity-0 group-hover/cell:opacity-100 transition-opacity shadow-lg z-10 hover:bg-emerald-600"
+          title="Marcar como Presente"
+        >
+          <CheckCircle2 size={14} />
+        </button>
+      )}
     </td>
   );
 };
 
-export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onOpenPicker, activeShiftLabel }) => {
+export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onOpenPicker, onUpdateStaff, activeShiftLabel }) => {
   return (
     <div className="flex flex-col w-full h-full overflow-hidden">
       <div className="bg-[#1e1b2e] text-white px-6 py-2 flex justify-between items-center shrink-0">
@@ -90,15 +106,15 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                 <td className="border border-slate-100"><input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center font-bold outline-none" /></td>
                 <td className="border border-slate-100 text-center text-[7px] bg-slate-50/20">{r.reinforcement || '-'}</td>
                 
-                <StaffCell staff={r.driver} role="CHOFER" onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} />
-                <StaffCell staff={r.aux1} role="AUX 1" onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} />
-                <StaffCell staff={r.aux2} role="AUX 2" onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} />
-                <StaffCell staff={r.aux3} role="AUX 3" onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} />
-                <StaffCell staff={r.aux4} role="AUX 4" onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} />
+                <StaffCell staff={r.driver} role="CHOFER" onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.aux1} role="AUX 1" onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.aux2} role="AUX 2" onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.aux3} role="AUX 3" onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.aux4} role="AUX 4" onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
 
-                <StaffCell staff={r.replacementDriver} role="SUPLENTE" isSuplente onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} />
-                <StaffCell staff={r.replacementAux1} role="AUX SUPL 1" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} />
-                <StaffCell staff={r.replacementAux2} role="AUX SUPL 2" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} />
+                <StaffCell staff={r.replacementDriver} role="SUPLENTE" isSuplente onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.replacementAux1} role="AUX SUPL 1" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                <StaffCell staff={r.replacementAux2} role="AUX SUPL 2" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
 
                 <td className="border border-slate-100">
                   <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full bg-transparent border-none outline-none font-black text-[8px] text-center ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>

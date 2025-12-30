@@ -38,8 +38,9 @@ export interface StaffMember {
   role?: 'CHOFER' | 'AUXILIAR' | 'ENCARGADO' | 'BALANCERO' | 'LONERO' | 'MAQUINISTA' | 'SUPERVISOR' | 'RESERVA' | 'FRANQUERO' | 'CARGA LATERAL';
   preferredShift?: 'MAÑANA' | 'TARDE' | 'NOCHE';
   assignedZone?: string;
-  address?: string; // Usado como motivo de falta principal
-  absenceReturnDate?: string; // ISO string de la fecha de regreso
+  address?: string; // Motivo de falta
+  absenceStartDate?: string; // ISO string de inicio de falta
+  absenceReturnDate?: string; // ISO string de regreso
   isIndefiniteAbsence?: boolean;
 }
 
@@ -111,6 +112,10 @@ export interface ShiftMetadata {
   }[];
 }
 
+/**
+ * Fix: Added TruckStatus enum and Truck interface to resolve compilation errors
+ * in components/FleetManagement.tsx.
+ */
 export enum TruckStatus {
   ACTIVE = 'OPERATIVO',
   MAINTENANCE = 'TALLER',

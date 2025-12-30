@@ -1,7 +1,7 @@
 
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus } from '../types';
 import React from 'react';
-import { User, CheckCircle2 } from 'lucide-react';
+import { User, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getAbsenceStyles } from '../App';
 
 interface ReportTableProps {
@@ -49,7 +49,6 @@ const StaffCell: React.FC<{
         </div>
       </div>
 
-      {/* BOTÓN RÁPIDO PARA MARCAR PRESENTE DESDE EL PARTE */}
       {isAbsent && (
         <button 
           onClick={(e) => {
@@ -85,46 +84,61 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
               <th className="w-16 text-center">INT.</th>
               <th className="w-24 text-center">DOMINIO</th>
               <th className="w-16 text-center">REF.</th>
-              <th className="w-44 text-center">TITULAR</th>
+              <th className="w-44 text-center">TITULAR (1)</th>
               <th className="w-44 text-center">AUX 1</th>
               <th className="w-44 text-center">AUX 2</th>
               <th className="w-44 text-center">AUX 3</th>
               <th className="w-44 text-center">AUX 4</th>
               <th className="w-44 text-center bg-indigo-900/40 text-indigo-100">SUPLENTE</th>
-              <th className="w-44 text-center bg-indigo-900/40 text-indigo-100">AUX SUPL 1</th>
-              <th className="w-44 text-center bg-indigo-900/40 text-indigo-100">AUX SUPL 2</th>
+              <th className="w-44 text-center bg-indigo-900/40 text-indigo-100">AUX REEMP 1</th>
+              <th className="w-44 text-center bg-indigo-900/40 text-indigo-100">AUX REEMP 2</th>
               <th className="w-28 text-center">ESTADO</th>
               <th className="w-[300px] text-left px-4">REPORTES</th>
               <th className="w-20 text-center">TN</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {data.map((r) => (
-              <tr key={r.id} className="h-10 hover:bg-slate-50 transition-colors">
-                <td className="sticky left-0 z-20 font-black border-r text-center bg-slate-50 uppercase text-slate-900 px-2">{r.zone}</td>
-                <td className="border border-slate-100"><input type="text" value={r.internalId || ''} onChange={e => onUpdateRecord?.(r.id, 'internalId', e.target.value)} className="w-full h-full bg-transparent text-center font-black outline-none" /></td>
-                <td className="border border-slate-100"><input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center font-bold outline-none" /></td>
-                <td className="border border-slate-100 text-center text-[7px] bg-slate-50/20">{r.reinforcement || '-'}</td>
-                
-                <StaffCell staff={r.driver} role="CHOFER" onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.aux1} role="AUX 1" onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.aux2} role="AUX 2" onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.aux3} role="AUX 3" onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.aux4} role="AUX 4" onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+            {data.map((r) => {
+              // Conteo dinámico: Solo alerta si hay más de lo permitido MARCADO COMO PRESENTE
+              const activeDrivers = [r.driver, r.replacementDriver].filter(s => s?.status === StaffStatus.PRESENT).length;
+              const activeAux = [r.aux1, r.aux2, r.aux3, r.aux4, r.replacementAux1, r.replacementAux2].filter(s => s?.status === StaffStatus.PRESENT).length;
+              
+              const hasAlert = activeDrivers > 1 || activeAux > 4;
 
-                <StaffCell staff={r.replacementDriver} role="SUPLENTE" isSuplente onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.replacementAux1} role="AUX SUPL 1" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
-                <StaffCell staff={r.replacementAux2} role="AUX SUPL 2" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+              return (
+                <tr key={r.id} className={`h-10 transition-colors ${hasAlert ? 'bg-amber-50/50' : 'hover:bg-slate-50'}`}>
+                  <td className="sticky left-0 z-20 font-black border-r text-center bg-slate-50 uppercase text-slate-900 px-2 flex items-center justify-center gap-1">
+                    {hasAlert && (
+                      <span title={`Exceso de personal activo: ${activeDrivers} Choferes, ${activeAux} Auxiliares`}>
+                        <AlertCircle size={10} className="text-amber-500 shrink-0" />
+                      </span>
+                    )}
+                    {r.zone}
+                  </td>
+                  <td className="border border-slate-100"><input type="text" value={r.internalId || ''} onChange={e => onUpdateRecord?.(r.id, 'internalId', e.target.value)} className="w-full h-full bg-transparent text-center font-black outline-none" /></td>
+                  <td className="border border-slate-100"><input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} className="w-full h-full bg-transparent text-center font-bold outline-none" /></td>
+                  <td className="border border-slate-100 text-center text-[7px] bg-slate-50/20">{r.reinforcement || '-'}</td>
+                  
+                  <StaffCell staff={r.driver} role="CHOFER" onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.aux1} role="AUX 1" onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.aux2} role="AUX 2" onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.aux3} role="AUX 3" onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.aux4} role="AUX 4" onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
 
-                <td className="border border-slate-100">
-                  <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full bg-transparent border-none outline-none font-black text-[8px] text-center ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
-                    <option value={ZoneStatus.PENDING}>PENDIENTE</option><option value={ZoneStatus.COMPLETE}>COMPLETA</option><option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>
-                  </select>
-                </td>
-                <td className="border border-slate-100 px-2"><input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} className="w-full h-full bg-transparent outline-none text-[8px] font-bold" /></td>
-                <td className="border border-slate-100"><input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} className="w-full h-full bg-transparent text-center outline-none font-black text-[10px]" /></td>
-              </tr>
-            ))}
+                  <StaffCell staff={r.replacementDriver} role="SUPLENTE" isSuplente onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.replacementAux1} role="REEMP 1" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+                  <StaffCell staff={r.replacementAux2} role="REEMP 2" isSuplente onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onMarkPresent={onUpdateStaff} />
+
+                  <td className="border border-slate-100">
+                    <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full bg-transparent border-none outline-none font-black text-[8px] text-center ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
+                      <option value={ZoneStatus.PENDING}>PENDIENTE</option><option value={ZoneStatus.COMPLETE}>COMPLETA</option><option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>
+                    </select>
+                  </td>
+                  <td className="border border-slate-100 px-2"><input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} className="w-full h-full bg-transparent outline-none text-[8px] font-bold" /></td>
+                  <td className="border border-slate-100"><input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} className="w-full h-full bg-transparent text-center outline-none font-black text-[10px]" /></td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

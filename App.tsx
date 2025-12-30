@@ -82,9 +82,10 @@ const App: React.FC = () => {
     const d = new Date(selectedDate + 'T12:00:00');
     d.setDate(d.getDate() + direction);
     setSelectedDate(d.toISOString().split('T')[0]);
+    setSearchTerm(''); // Limpiar búsqueda al cambiar de día
   };
 
-  // Lógica de validación de ausencias por fecha (Mejorada)
+  // Lógica de validación de ausencias por fecha
   const resolveStaffStatus = (member: StaffMember, dateStr: string): StaffMember => {
     if (!member.absenceStartDate) return { ...member, status: member.status === StaffStatus.ABSENT ? StaffStatus.PRESENT : member.status, address: '' };
 
@@ -191,15 +192,12 @@ const App: React.FC = () => {
 
   const handleUpdateStaff = (updatedMember: StaffMember) => {
     const resolved = resolveStaffStatus(updatedMember, selectedDate);
-    
-    // Actualizar Padrón Maestro para persistencia total
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
     const updatedMaster = masterStaff.map((s: StaffMember) => s.id === updatedMember.id ? updatedMember : s);
     localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
 
     const newStaffList = staffList.map(s => s.id === resolved.id ? resolved : s);
     setStaffList(newStaffList);
-
     setRecords(prev => syncRecordsWithStaff(prev, newStaffList));
     setTransferRecords(prev => prev.map(tr => ({
         ...tr,
@@ -215,7 +213,6 @@ const App: React.FC = () => {
   const toggleStaffStatusFromPicker = (e: React.MouseEvent, staff: StaffMember, reason?: string) => {
     e.stopPropagation();
     const newStatus = staff.status === StaffStatus.ABSENT ? StaffStatus.PRESENT : StaffStatus.ABSENT;
-    
     const updated = { 
         ...staff, 
         status: newStatus, 
@@ -270,16 +267,15 @@ const App: React.FC = () => {
     let res = records.filter(r => shiftFilter === 'TODOS' || r.shift === shiftFilter);
     if (subTab === 'GENERAL') res = res.filter(r => r.category === 'RECOLECCIÓN');
     else if (subTab === 'REPASO') res = res.filter(r => r.category === 'REPASO_LATERAL' || r.category === 'CARGA LATERAL');
-    if (searchTerm) res = res.filter(r => r.zone.toLowerCase().includes(searchTerm.toLowerCase()));
+    if (searchTerm && activeTab === 'parte') res = res.filter(r => r.zone.toLowerCase().includes(searchTerm.toLowerCase()));
     return res;
-  }, [records, shiftFilter, searchTerm, subTab]);
+  }, [records, shiftFilter, searchTerm, subTab, activeTab]);
 
   const filteredPickerStaff = useMemo(() => {
     if (!pickerState) return [];
     const search = pickerSearch.toLowerCase().trim();
     const field = pickerState.field.toLowerCase();
     
-    // Identificar quién está asignado actualmente para ponerlo arriba
     let currentId = '';
     const record = records.find(r => r.id === pickerState.targetId);
     const transfer = transferRecords.find(t => t.id === pickerState.targetId);
@@ -303,7 +299,6 @@ const App: React.FC = () => {
       return true;
     });
 
-    // Restaurar ordenamiento: El asignado primero
     return filtered.sort((a, b) => {
         if (a.id === currentId) return -1;
         if (b.id === currentId) return 1;
@@ -341,8 +336,8 @@ const App: React.FC = () => {
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em]">G.I.R.S.U.</p>
         </div>
         <nav className="flex-1 px-4 space-y-2 mt-8">
-            <SidebarItem active={activeTab === 'parte'} icon={<ClipboardList size={20} />} label="Parte Diario" onClick={() => setActiveTab('parte')} />
-            <SidebarItem active={activeTab === 'personal'} icon={<Users size={20} />} label="Padrón Personal" onClick={() => setActiveTab('personal')} />
+            <SidebarItem active={activeTab === 'parte'} icon={<ClipboardList size={20} />} label="Parte Diario" onClick={() => { setActiveTab('parte'); setSearchTerm(''); }} />
+            <SidebarItem active={activeTab === 'personal'} icon={<Users size={20} />} label="Padrón Personal" onClick={() => { setActiveTab('personal'); setSearchTerm(''); }} />
         </nav>
         <div className="p-6">
             <button className="w-full flex items-center justify-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-red-500/10 rounded-2xl transition-all"><LogOut size={18} /><span className="text-[10px] font-black uppercase">Salir</span></button>
@@ -380,21 +375,36 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'parte' && (
-          <div className="bg-white px-6 py-2 border-b border-slate-200 flex items-center gap-4 shrink-0 z-30 shadow-sm overflow-x-auto custom-scrollbar">
-              <div className="flex gap-1.5 shrink-0">
-                  <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN" onClick={() => setSubTab('GENERAL')} />
-                  <SubTabButton active={subTab === 'REPASO'} label="REPASO" onClick={() => setSubTab('REPASO')} />
-                  <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
+        {/* CABECERA DINÁMICA CON BUSCADOR */}
+        <div className="bg-white px-6 py-2 border-b border-slate-200 flex items-center gap-4 shrink-0 z-30 shadow-sm overflow-x-auto custom-scrollbar">
+            {activeTab === 'parte' ? (
+              <>
+                <div className="flex gap-1.5 shrink-0">
+                    <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN" onClick={() => setSubTab('GENERAL')} />
+                    <SubTabButton active={subTab === 'REPASO'} label="REPASO" onClick={() => setSubTab('REPASO')} />
+                    <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
+                </div>
+                <div className="h-6 w-px bg-slate-200 mx-1 shrink-0"></div>
+                <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })} onUpdateStaff={handleUpdateStaff} />
+              </>
+            ) : (
+              <div className="flex flex-col gap-0.5 shrink-0">
+                  <h2 className="text-[12px] font-black text-slate-800 uppercase italic">Padrón de Personal</h2>
+                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">Gestión y control de asistencia</p>
               </div>
-              <div className="h-6 w-px bg-slate-200 mx-1 shrink-0"></div>
-              <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })} onUpdateStaff={handleUpdateStaff} />
-              <div className="relative w-48 ml-auto shrink-0">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                  <input type="text" placeholder="FILTRAR..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white transition-all uppercase" />
-              </div>
-          </div>
-        )}
+            )}
+            
+            <div className="relative w-64 ml-auto shrink-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <input 
+                  type="text" 
+                  placeholder={activeTab === 'parte' ? "FILTRAR RUTAS..." : "BUSCAR NOMBRE O LEGAJO..."} 
+                  value={searchTerm} 
+                  onChange={e => setSearchTerm(e.target.value)} 
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all uppercase" 
+                />
+            </div>
+        </div>
 
         <div className="flex-1 overflow-hidden p-4 bg-[#f8fafc]">
             {activeTab === 'parte' ? (
@@ -421,7 +431,17 @@ const App: React.FC = () => {
                     )}
                 </div>
             ) : (
-                <div className="h-full overflow-y-auto pr-4 custom-scrollbar"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={(id) => setStaffList(staffList.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} /></div>
+                <div className="h-full overflow-y-auto pr-4 custom-scrollbar">
+                  <StaffManagement 
+                    staffList={staffList} 
+                    onUpdateStaff={handleUpdateStaff} 
+                    onAddStaff={(m) => setStaffList([...staffList, m])} 
+                    onRemoveStaff={(id) => setStaffList(staffList.filter(s => s.id !== id))} 
+                    records={records} 
+                    selectedShift={shiftFilter}
+                    searchTerm={searchTerm} // Pasamos el término de búsqueda global
+                  />
+                </div>
             )}
         </div>
       </main>
@@ -448,11 +468,9 @@ const App: React.FC = () => {
                         const rec = records.find(r => r.id === pickerState.targetId);
                         const tr = transferRecords.find(t => t.id === pickerState.targetId);
 
-                        // Fix: Accessing 'id' on the dynamic field of a record using any to avoid type check errors.
                         if (pickerState.type === 'route') isCurrent = (rec?.[pickerState.field as keyof RouteRecord] as any)?.id === s.id;
                         else if (pickerState.type === 'transfer') {
                           if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) isCurrent = tr?.units[pickerState.unitIdx].driver?.id === s.id;
-                          // Fix: Accessing 'id' on the dynamic field of a TransferRecord using any to avoid type check errors.
                           else isCurrent = (tr as any)?.[pickerState.field]?.id === s.id;
                         }
 
@@ -491,7 +509,7 @@ const App: React.FC = () => {
 
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
       <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => {
-            const newRoute: RouteRecord = { id: `${z}-${s}-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'MANUAL', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, ayux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' };
+            const newRoute: RouteRecord = { id: `${z}-${s}-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'MANUAL', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' };
             setRecords([...records, newRoute]);
       }} currentShift={shiftFilter} />
     </div>

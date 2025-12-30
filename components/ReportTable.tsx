@@ -2,6 +2,7 @@
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus } from '../types';
 import React from 'react';
 import { User } from 'lucide-react';
+import { getAbsenceStyles } from '../App';
 
 interface ReportTableProps {
   data: RouteRecord[];
@@ -26,19 +27,20 @@ const StaffCell: React.FC<{
   );
   
   const isAbsent = staff.status === StaffStatus.ABSENT;
+  const absenceStyle = isAbsent ? getAbsenceStyles(staff.address || 'FALTA') : '';
   
   return (
-    <td onClick={onClick} className={`border border-slate-200 p-0 min-w-[130px] h-10 cursor-pointer transition-all ${isAbsent ? 'bg-red-50' : isSuplente ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-slate-50'}`}>
+    <td onClick={onClick} className={`border border-slate-200 p-0 min-w-[130px] h-10 cursor-pointer transition-all ${isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-600 text-white' : 'bg-white hover:bg-slate-50'}`}>
       <div className="flex flex-col items-center justify-center h-full px-1 text-center relative overflow-hidden">
-        <span className={`uppercase truncate w-full font-black ${isAbsent ? 'text-red-600' : isSuplente ? 'text-white' : 'text-slate-800'} text-[9px]`}>
+        <span className={`uppercase truncate w-full font-black ${isAbsent ? '' : isSuplente ? 'text-white' : 'text-slate-800'} text-[9px]`}>
           {staff.name}
         </span>
         <div className="flex items-center gap-1 mt-0.5">
-          <span className={`text-[7px] font-bold px-1 py-0.2 rounded ${isAbsent ? 'bg-red-600 text-white' : isSuplente ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+          <span className={`text-[7px] font-bold px-1 py-0.2 rounded ${isAbsent ? 'bg-white/40 text-current' : isSuplente ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
             {staff.id}
           </span>
           {isAbsent && (
-            <span className="text-[7px] font-black uppercase bg-red-600 text-white px-1 py-0 rounded">
+            <span className="text-[7px] font-black uppercase bg-white/60 px-1 py-0 rounded">
               {staff.address || 'FALTA'}
             </span>
           )}

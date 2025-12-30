@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { X, ClipboardCheck, Printer, CheckCircle2, Users, Download, Loader2 } from 'lucide-react';
-import { RouteRecord, ZoneStatus } from '../types';
+import React, { useState, useMemo } from 'react';
+import { X, ClipboardCheck, Printer, CheckCircle2, Users, Download, Loader2, Info } from 'lucide-react';
+import { RouteRecord, ZoneStatus, StaffStatus } from '../types';
 
 interface ShiftCloseModalProps {
   isOpen: boolean;
@@ -18,12 +18,28 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
   const shiftRecords = records.filter(r => r.shift === shift);
   const incomplete = shiftRecords.filter(r => r.zoneStatus === ZoneStatus.INCOMPLETE);
 
+  const statsSummary = useMemo(() => {
+    let drivers = 0;
+    let aux = 0;
+    shiftRecords.forEach(r => {
+        // Solo sumamos los que están marcados como PRESENTE en el sistema
+        if (r.driver?.status === StaffStatus.PRESENT) drivers++;
+        if (r.replacementDriver?.status === StaffStatus.PRESENT) drivers++;
+        
+        if (r.aux1?.status === StaffStatus.PRESENT) aux++;
+        if (r.aux2?.status === StaffStatus.PRESENT) aux++;
+        if (r.aux3?.status === StaffStatus.PRESENT) aux++;
+        if (r.aux4?.status === StaffStatus.PRESENT) aux++;
+        if (r.replacementAux1?.status === StaffStatus.PRESENT) aux++;
+        if (r.replacementAux2?.status === StaffStatus.PRESENT) aux++;
+    });
+    return { drivers, aux, totalZones: shiftRecords.length, complete: shiftRecords.filter(r => r.zoneStatus === ZoneStatus.COMPLETE).length };
+  }, [shiftRecords]);
+
   const handleDownloadPDF = () => {
     const element = document.getElementById('report-to-pdf');
     if (!element) return;
-
     setIsGenerating(true);
-    
     const opt = {
       margin: 10,
       filename: `REPORTE_GIRSU_TURNO_${shift}_${new Date().toLocaleDateString()}.pdf`,
@@ -31,7 +47,6 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
       html2canvas: { scale: 2, useCORS: true },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
     };
-
     // @ts-ignore
     window.html2pdf().set(opt).from(element).save().then(() => {
       setIsGenerating(false);
@@ -40,10 +55,13 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
 
   const countAuxiliaries = (r: RouteRecord) => {
     let count = 0;
-    if (r.aux1) count++;
-    if (r.aux2) count++;
-    if (r.aux3) count++;
-    if (r.aux4) count++;
+    // Solo contamos auxiliares PRESENTES
+    if (r.aux1?.status === StaffStatus.PRESENT) count++;
+    if (r.aux2?.status === StaffStatus.PRESENT) count++;
+    if (r.aux3?.status === StaffStatus.PRESENT) count++;
+    if (r.aux4?.status === StaffStatus.PRESENT) count++;
+    if (r.replacementAux1?.status === StaffStatus.PRESENT) count++;
+    if (r.replacementAux2?.status === StaffStatus.PRESENT) count++;
     return count;
   };
 
@@ -51,10 +69,9 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-0 md:p-4 no-print">
       <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95">
         
-        {/* CABECERA */}
         <div className="bg-[#1e1b2e] p-8 text-white flex justify-between items-center shrink-0">
           <div className="flex items-center gap-5">
-            <div className="bg-indigo-500/30 p-3 rounded-2xl border border-white/10 shadow-inner">
+            <div className="bg-indigo-500/30 p-3 rounded-2xl border border-white/10">
               <ClipboardCheck size={32} className="text-indigo-400" />
             </div>
             <div>
@@ -67,8 +84,26 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
           </button>
         </div>
 
-        {/* CONTENIDO PARA PDF */}
-        <div id="report-to-pdf" className="flex-1 overflow-y-auto p-4 md:p-12 space-y-12 bg-white">
+        <div id="report-to-pdf" className="flex-1 overflow-y-auto p-4 md:p-12 space-y-8 bg-white">
+          <div className="grid grid-cols-4 gap-6 no-print-section">
+             <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Rutas Totales</p>
+                <p className="text-2xl font-black text-slate-800">{statsSummary.totalZones}</p>
+             </div>
+             <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Completas</p>
+                <p className="text-2xl font-black text-emerald-800">{statsSummary.complete}</p>
+             </div>
+             <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Choferes Reales</p>
+                <p className="text-2xl font-black text-indigo-800">{statsSummary.drivers}</p>
+             </div>
+             <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+                <p className="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Auxiliares Reales</p>
+                <p className="text-2xl font-black text-indigo-800">{statsSummary.aux}</p>
+             </div>
+          </div>
+
           <div className="space-y-6">
             <div className="flex justify-between items-center px-2">
                <h4 className="text-[12px] font-black text-slate-800 uppercase tracking-widest italic border-l-4 border-indigo-500 pl-4">
@@ -85,11 +120,10 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
                       <th className="pl-8 w-40">RUTA / ZONA</th>
                       <th className="text-center w-24">INTERNO</th>
                       <th className="text-center w-32">PATENTE</th>
-                      <th className="w-72">EQUIPO (CHOFER Y LEGAJO)</th>
+                      <th className="w-72">EQUIPO (CHOFER ACTIVO)</th>
                       <th className="text-center w-20">AUX.</th>
                       <th className="px-8">NOVEDAD (FALTANTE REGISTRADO)</th>
-                      <th className="text-center w-32">HORA</th>
-                      <th className="text-center pr-8 w-28">TN</th>
+                      <th className="text-center w-28">TN</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -100,8 +134,13 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
                         <td className="text-center font-mono text-slate-400 tracking-tighter uppercase font-black">{r.domain || '-'}</td>
                         <td className="py-2">
                           <div className="flex flex-col">
-                            <span className="font-black text-slate-800">{r.driver?.name || 'SIN ASIGNAR'}</span>
-                            <span className="text-[10px] text-indigo-500 font-black tracking-widest mt-1">LEGAJO: {r.driver?.id || '---'}</span>
+                            {r.driver?.status === StaffStatus.PRESENT ? (
+                                <span className="font-black text-slate-800">{r.driver.name}</span>
+                            ) : r.replacementDriver?.status === StaffStatus.PRESENT ? (
+                                <span className="font-black text-indigo-600">{r.replacementDriver.name} (REEMP)</span>
+                            ) : (
+                                <span className="text-red-500 font-black">SIN CHOFER PRESENTE</span>
+                            )}
                           </div>
                         </td>
                         <td className="text-center">
@@ -111,9 +150,6 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
                         </td>
                         <td className="px-8 italic text-red-600 font-black leading-snug text-[12px] uppercase tracking-tight max-w-sm">
                           {r.supervisionReport || 'SIN REPORTE CARGADO'}
-                        </td>
-                        <td className="text-center font-black text-slate-400">
-                          {r.dumpTime || r.departureTime || '--:--'}
                         </td>
                         <td className="text-center pr-8 font-black text-indigo-600 text-base">
                           {r.tonnage || '0.00'}
@@ -133,7 +169,6 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
           </div>
         </div>
 
-        {/* PIE DE PÁGINA (ACCIONES) */}
         <div className="p-10 bg-slate-50 border-t flex flex-col md:flex-row justify-end items-center gap-4">
           <div className="flex gap-4 w-full md:w-auto">
             <button 
@@ -145,11 +180,7 @@ export const ShiftCloseModal: React.FC<ShiftCloseModalProps> = ({ isOpen, onClos
               {isGenerating ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />}
               {isGenerating ? 'GENERANDO...' : 'DESCARGAR REPORTE PDF'}
             </button>
-            <button 
-              type="button"
-              onClick={onClose} 
-              className="flex-1 md:flex-none px-16 py-6 bg-white border-2 border-slate-200 text-slate-400 rounded-3xl text-[13px] font-black uppercase hover:bg-slate-50 transition-all"
-            >
+            <button type="button" onClick={onClose} className="flex-1 md:flex-none px-16 py-6 bg-white border-2 border-slate-200 text-slate-400 rounded-3xl text-[13px] font-black uppercase hover:bg-slate-50 transition-all">
               CERRAR
             </button>
           </div>

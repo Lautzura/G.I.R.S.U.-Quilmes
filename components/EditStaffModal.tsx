@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Edit3, MapPin, AlertTriangle, Briefcase, Calendar, Infinity } from 'lucide-react';
+import { X, Save, Edit3, MapPin, Briefcase, Calendar, Infinity, User, UserRound, ArrowRight } from 'lucide-react';
 import { StaffMember, StaffStatus, AbsenceReason, RouteRecord } from '../types';
 
 interface EditStaffModalProps {
@@ -15,12 +15,13 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
   const [formData, setFormData] = useState({
     id: staff.id,
     name: staff.name,
-    role: (staff.role || 'AUXILIAR') as StaffMember['role'],
     gender: (staff.gender || 'MASCULINO') as 'MASCULINO' | 'FEMENINO',
+    role: (staff.role || 'AUXILIAR') as StaffMember['role'],
     preferredShift: (staff.preferredShift || 'MAÑANA') as 'MAÑANA' | 'TARDE' | 'NOCHE',
     status: staff.status,
     assignedZone: staff.assignedZone || '',
     address: staff.address || '',
+    absenceStartDate: staff.absenceStartDate || new Date().toISOString().split('T')[0],
     absenceReturnDate: staff.absenceReturnDate || '',
     isIndefiniteAbsence: !!staff.isIndefiniteAbsence
   });
@@ -36,12 +37,13 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
     setFormData({
       id: staff.id,
       name: staff.name,
-      role: (staff.role || 'AUXILIAR') as StaffMember['role'],
       gender: (staff.gender || 'MASCULINO') as 'MASCULINO' | 'FEMENINO',
+      role: (staff.role || 'AUXILIAR') as StaffMember['role'],
       preferredShift: (staff.preferredShift || 'MAÑANA') as 'MAÑANA' | 'TARDE' | 'NOCHE',
       status: staff.status,
       assignedZone: staff.assignedZone || '',
       address: staff.address || '',
+      absenceStartDate: staff.absenceStartDate || new Date().toISOString().split('T')[0],
       absenceReturnDate: staff.absenceReturnDate || '',
       isIndefiniteAbsence: !!staff.isIndefiniteAbsence
     });
@@ -55,12 +57,13 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
       ...staff,
       id: formData.id,
       name: formData.name.toUpperCase(),
-      role: formData.role,
       gender: formData.gender,
+      role: formData.role,
       preferredShift: formData.preferredShift,
       status: formData.status,
       assignedZone: formData.assignedZone,
       address: formData.status === StaffStatus.ABSENT ? formData.address : '',
+      absenceStartDate: formData.status === StaffStatus.ABSENT ? formData.absenceStartDate : undefined,
       absenceReturnDate: formData.status === StaffStatus.ABSENT && !formData.isIndefiniteAbsence ? formData.absenceReturnDate : undefined,
       isIndefiniteAbsence: formData.status === StaffStatus.ABSENT ? formData.isIndefiniteAbsence : false
     });
@@ -137,22 +140,27 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Género</label>
-              <div className="flex gap-2">
-                {(['MASCULINO', 'FEMENINO'] as const).map(g => (
-                    <button
-                        key={g}
-                        type="button"
-                        onClick={() => setFormData({...formData, gender: g})}
-                        className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all border ${formData.gender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
-                    >
-                        {g === 'MASCULINO' ? 'HOMBRE' : 'MUJER'}
-                    </button>
-                ))}
-              </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Género del Colaborador</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, gender: 'MASCULINO'})}
+                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'MASCULINO' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                <User size={14} /> MASCULINO
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, gender: 'FEMENINO'})}
+                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'FEMENINO' ? 'bg-pink-500 text-white border-pink-500 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                <UserRound size={14} /> FEMENINO
+              </button>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Turno Pref.</label>
               <select 
@@ -163,6 +171,18 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                 <option value="MAÑANA">MAÑANA</option>
                 <option value="TARDE">TARDE</option>
                 <option value="NOCHE">NOCHE</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                <MapPin size={12} className="text-indigo-500" /> Zona Asignada
+              </label>
+              <select 
+                value={formData.assignedZone}
+                onChange={e => setFormData({...formData, assignedZone: e.target.value})}
+                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all"
+              >
+                {availableZones.map(z => <option key={z} value={z}>{z}</option>)}
               </select>
             </div>
           </div>
@@ -198,46 +218,60 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                     className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                     <option value="">-- SELECCIONAR --</option>
-                    {Object.values(AbsenceReason)
-                        .filter(reason => {
-                            if (formData.gender === 'MASCULINO') {
-                                return reason !== AbsenceReason.DIA_FEMENINO && reason !== AbsenceReason.MATERNIDAD;
-                            }
-                            return true;
-                        })
-                        .map(r => (
+                    {Object.values(AbsenceReason).filter(reason => {
+                      if (formData.gender === 'MASCULINO' && (reason === AbsenceReason.MATERNIDAD || reason === AbsenceReason.DIA_FEMENINO)) return false;
+                      return true;
+                    }).map(r => (
                         <option key={r} value={r}>{r}</option>
                     ))}
                     </select>
                 </div>
              </div>
 
-             {/* GESTIÓN DE DURACIÓN POR CALENDARIO */}
-             {formData.status === StaffStatus.ABSENT && isLongTermAbsence && (
+             {formData.status === StaffStatus.ABSENT && (
                  <div className="pt-4 border-t border-slate-200 space-y-4 animate-in slide-in-from-top duration-300">
-                    <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                           <Calendar size={12} className="text-indigo-500" /> Fecha de reincorporación
-                        </label>
-                        <button 
-                            type="button"
-                            onClick={() => setFormData(p => ({...p, isIndefiniteAbsence: !p.isIndefiniteAbsence}))}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${formData.isIndefiniteAbsence ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
-                        >
-                            <Infinity size={14} /> Indefinido
-                        </button>
-                    </div>
-
-                    {!formData.isIndefiniteAbsence && (
-                        <div className="space-y-2">
-                            <input 
-                                type="date" 
-                                value={formData.absenceReturnDate} 
-                                onChange={e => setFormData({...formData, absenceReturnDate: e.target.value})} 
-                                className="w-full px-5 py-3.5 bg-white border border-indigo-100 rounded-2xl text-xs font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
-                            />
+                    <div className="flex flex-col gap-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    Inicio de Licencia
+                                </label>
+                                <input 
+                                    type="date" 
+                                    value={formData.absenceStartDate} 
+                                    onChange={e => setFormData({...formData, absenceStartDate: e.target.value})} 
+                                    className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                        Fin de Licencia
+                                    </label>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setFormData(p => ({...p, isIndefiniteAbsence: !p.isIndefiniteAbsence}))}
+                                        className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase transition-all ${formData.isIndefiniteAbsence ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
+                                    >
+                                        Indefinido
+                                    </button>
+                                </div>
+                                {!formData.isIndefiniteAbsence && (
+                                    <input 
+                                        type="date" 
+                                        value={formData.absenceReturnDate} 
+                                        onChange={e => setFormData({...formData, absenceReturnDate: e.target.value})} 
+                                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    />
+                                )}
+                                {formData.isIndefiniteAbsence && (
+                                    <div className="w-full px-4 py-2 bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-black text-slate-400 flex items-center justify-center gap-2 uppercase">
+                                        <Infinity size={14} /> Sin fecha de retorno
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    )}
+                    </div>
                  </div>
              )}
           </div>

@@ -13,7 +13,8 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
   const [formData, setFormData] = useState({
     id: '',
     name: '',
-    role: 'AUXILIAR' as 'CHOFER' | 'AUXILIAR',
+    role: 'AUXILIAR' as StaffMember['role'],
+    gender: 'MASCULINO' as 'MASCULINO' | 'FEMENINO',
     preferredShift: 'MAÑANA' as 'MAÑANA' | 'TARDE' | 'NOCHE'
   });
 
@@ -27,6 +28,7 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
       id: formData.id,
       name: formData.name.toUpperCase(),
       status: StaffStatus.PRESENT,
+      gender: formData.gender,
       role: formData.role,
       preferredShift: formData.preferredShift,
       assignedZone: 'BASE'
@@ -67,6 +69,14 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
               >
                 <option value="AUXILIAR">AUXILIAR</option>
                 <option value="CHOFER">CHOFER</option>
+                <option value="SUPERVISOR">SUPERVISOR</option>
+                <option value="RESERVA">RESERVA</option>
+                <option value="FRANQUERO">FRANQUERO</option>
+                <option value="CARGA LATERAL">CARGA LATERAL</option>
+                <option value="ENCARGADO">ENCARGADO</option>
+                <option value="MAQUINISTA">MAQUINISTA</option>
+                <option value="BALANCERO">BALANCERO</option>
+                <option value="LONERO">LONERO</option>
               </select>
             </div>
           </div>
@@ -81,6 +91,22 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
               placeholder="APELLIDO NOMBRE"
               className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500"
             />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identidad de Género</label>
+            <div className="grid grid-cols-2 gap-2">
+              {(['MASCULINO', 'FEMENINO'] as const).map(g => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setFormData({...formData, gender: g})}
+                  className={`py-2 rounded-xl text-[10px] font-black transition-all border ${formData.gender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+                >
+                  {g === 'MASCULINO' ? 'HOMBRE' : 'MUJER'}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-1">

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason } from '../types';
-import { Search, UserPlus, Trash2, Edit3, AlertCircle, Users, CheckCircle, UserMinus, Info, Calendar, Infinity, Star } from 'lucide-react';
+import { Search, UserPlus, Trash2, Edit3, AlertCircle, Users, CheckCircle, UserMinus, Info, Star } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../App';
@@ -13,10 +13,10 @@ interface StaffManagementProps {
   onUpdateStaff: (member: StaffMember) => void;
   records: RouteRecord[];
   selectedShift: string;
+  searchTerm: string; // Recibe el término de búsqueda como prop
 }
 
-export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, selectedShift, records }) => {
-  const [searchTerm, setSearchTerm] = useState('');
+export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, selectedShift, records, searchTerm }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   
@@ -60,7 +60,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         </div>
       </div>
 
-      {stats.faltas > 0 && (
+      {stats.faltas > 0 && !searchTerm && (
         <div className="bg-slate-50 rounded-3xl p-5 border border-slate-100 animate-in slide-in-from-top duration-300">
           <div className="flex items-center gap-3 mb-3 px-2">
             <Info size={14} className="text-slate-400" />
@@ -78,9 +78,15 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
       )}
 
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-2">
-        <div><h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic">Padrón {selectedShift}</h2><p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Total {displayedStaff.length} colaboradores filtrados</p></div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"><UserPlus size={16} /> Nuevo Ingreso</button>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight italic leading-none">Padrón {selectedShift}</h2>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+            {searchTerm ? `Resultados para "${searchTerm}": ${displayedStaff.length}` : `Total ${displayedStaff.length} colaboradores habilitados`}
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-4 shrink-0">
+          <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-6 py-4 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 transition-all"><UserPlus size={16} /> Nuevo Ingreso</button>
         </div>
       </div>
 
@@ -128,6 +134,16 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                   </td>
                 </tr>
               ))}
+              {displayedStaff.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="h-40 text-center">
+                    <div className="flex flex-col items-center justify-center text-slate-300">
+                      <Search size={40} className="mb-2 opacity-20" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">No se encontraron resultados para "{searchTerm}"</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

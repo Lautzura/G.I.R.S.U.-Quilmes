@@ -28,9 +28,9 @@ import {
     UserCheck
 } from 'lucide-react';
 
-// HELPER PARA COLORES DINÁMICOS - Exportado para ser usado en otros componentes
+// HELPER PARA COLORES DINÁMICOS
 export const getAbsenceStyles = (reason: string) => {
-    const r = reason.toUpperCase();
+    const r = reason?.toUpperCase() || '';
     if (r.includes('SUSPENSION')) return 'bg-red-100 text-red-700 border-red-200';
     if (r.includes('VACACIONES') || r.includes('RESERVA')) return 'bg-amber-100 text-amber-700 border-amber-200';
     if (r.includes('ART') || r.includes('MEDICA') || r.includes('95')) return 'bg-teal-100 text-teal-700 border-teal-200';
@@ -69,6 +69,13 @@ const App: React.FC = () => {
   const [pickerSearch, setPickerSearch] = useState('');
   const [expandingAbsenceId, setExpandingAbsenceId] = useState<string | null>(null);
 
+  // Helper seguro para obtener personal de la DB
+  const getSafeStaff = (key: string): StaffMember | null => {
+    const member = STAFF_DB[key];
+    if (!member) return null;
+    return { ...member, gender: member.gender || 'MASCULINO' };
+  };
+
   // LOGICA DE CARGA Y PERSISTENCIA
   useEffect(() => {
     setIsLoaded(false);
@@ -78,8 +85,10 @@ const App: React.FC = () => {
     const savedMeta = localStorage.getItem(`meta_v7_${selectedDate}`);
     const savedTrans = localStorage.getItem(`trans_v7_${selectedDate}`);
 
+    const initialStaff = EXTRA_STAFF.map(s => ({ ...s, gender: s.gender || 'MASCULINO' }));
+
     setRecords(savedData ? JSON.parse(savedData) : generateInitialDayData(selectedDate));
-    setStaffList(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
+    setStaffList(savedStaff ? JSON.parse(savedStaff) : initialStaff);
     setShiftMetadataMap(savedMeta ? JSON.parse(savedMeta) : {
         'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] },
         'TARDE': { supervisor: '', subSupervisor: '', absences: [] },
@@ -99,12 +108,8 @@ const App: React.FC = () => {
     localStorage.setItem(`trans_v7_${selectedDate}`, JSON.stringify(transferRecords));
   }, [records, staffList, shiftMetadataMap, transferRecords, selectedDate, isLoaded]);
 
-  // SINCRONIZACIÓN GLOBAL: Cuando alguien cambia de estado (falta/presente), se actualizan todas las celdas automáticamente
   const handleUpdateStaff = (updatedMember: StaffMember) => {
-    // 1. Lista Maestra
     setStaffList(prev => prev.map(s => s.id === updatedMember.id ? updatedMember : s));
-    
-    // 2. Registros de Rutas
     setRecords(prev => prev.map(r => {
       const u = (m: StaffMember | null) => (m && m.id === updatedMember.id) ? { ...updatedMember } : m;
       return {
@@ -114,7 +119,6 @@ const App: React.FC = () => {
       };
     }));
 
-    // 3. Registros de Tolva
     setTransferRecords(prev => prev.map(tr => ({
       ...tr,
       units: tr.units.map(unit => ({
@@ -146,11 +150,11 @@ const App: React.FC = () => {
         zone: m.zone, internalId: m.interno || '', domain: m.domain || '',
         reinforcement: m.ref || 'Vacio', departureTime: m.time || '', dumpTime: '', tonnage: m.ton || '',
         shift: shift as any, zoneStatus: ZoneStatus.PENDING, order: 0, category: category,
-        driver: m.driver ? (STAFF_DB[m.driver] || null) : null,
-        aux1: m.aux1 ? (STAFF_DB[m.aux1] || null) : null,
-        aux2: m.aux2 ? (STAFF_DB[m.aux2] || null) : null,
-        aux3: m.aux3 ? (STAFF_DB[m.aux3] || null) : null,
-        aux4: m.aux4 ? (STAFF_DB[m.aux4] || null) : null,
+        driver: m.driver ? getSafeStaff(m.driver) : null,
+        aux1: m.aux1 ? getSafeStaff(m.aux1) : null,
+        aux2: m.aux2 ? getSafeStaff(m.aux2) : null,
+        aux3: m.aux3 ? getSafeStaff(m.aux3) : null,
+        aux4: m.aux4 ? getSafeStaff(m.aux4) : null,
         replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: m.report || ''
     });
     return [
@@ -185,24 +189,21 @@ const App: React.FC = () => {
     return res;
   }, [records, shiftFilter, searchTerm, subTab]);
 
-  // PICKER FILTRADO Y ORDENADO: LA PERSONA ASIGNADA ACTUALMENTE VA ARRIBA DE TODO
   const filteredPickerStaff = useMemo(() => {
     if (!pickerState) return [];
     const search = pickerSearch.toLowerCase().trim();
     const field = pickerState.field.toLowerCase();
     
-    // Encontrar ID actual
     let currentId = '';
-    if (pickerState.type === 'route') {
-      currentId = (records.find(r => r.id === pickerState.targetId) as any)?.[pickerState.field]?.id || '';
-    } else if (pickerState.type === 'transfer') {
-      const tr = transferRecords.find(t => t.id === pickerState.targetId);
-      if (tr) {
-        if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) currentId = tr.units[pickerState.unitIdx].driver?.id || '';
-        else currentId = (tr as any)?.[pickerState.field]?.id || '';
-      }
+    const record = records.find(r => r.id === pickerState.targetId);
+    const transfer = transferRecords.find(t => t.id === pickerState.targetId);
+
+    if (pickerState.type === 'route' && record) {
+      currentId = (record as any)?.[pickerState.field]?.id || '';
+    } else if (pickerState.type === 'transfer' && transfer) {
+      if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) currentId = transfer.units[pickerState.unitIdx].driver?.id || '';
+      else currentId = (transfer as any)?.[pickerState.field]?.id || '';
     } else if (pickerState.type === 'meta') {
-      // En meta comparamos por nombre ya que se guarda como string
       const metaName = (shiftMetadataMap[shiftFilter] as any)?.[pickerState.field] || '';
       currentId = staffList.find(s => s.name === metaName)?.id || '';
     }
@@ -210,8 +211,6 @@ const App: React.FC = () => {
     const filtered = staffList.filter(s => {
       const matchesSearch = search === '' || s.name.toLowerCase().includes(search) || s.id.toLowerCase().includes(search);
       if (!matchesSearch) return false;
-
-      // Restricción de Roles
       if (field.includes('driver')) return s.role === 'CHOFER';
       if (field.includes('aux')) return s.role === 'AUXILIAR';
       if (field.includes('maquinista')) return s.role === 'MAQUINISTA';
@@ -221,7 +220,6 @@ const App: React.FC = () => {
       return true;
     });
 
-    // ORDEN: El que ya está asignado primero
     return filtered.sort((a, b) => (a.id === currentId ? -1 : b.id === currentId ? 1 : 0));
   }, [staffList, pickerSearch, pickerState, records, transferRecords, shiftMetadataMap, shiftFilter]);
 
@@ -246,7 +244,6 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden font-['Plus_Jakarta_Sans']">
-      {/* SIDEBAR */}
       <aside className="w-64 bg-[#111827] text-white flex flex-col shrink-0 shadow-2xl z-50">
         <div className="p-8 text-center border-b border-white/5">
             <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-2">
@@ -265,7 +262,6 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* HEADER */}
         <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40">
           <div className="flex items-center gap-4">
               <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU OPERATIVO</h1>
@@ -293,7 +289,13 @@ const App: React.FC = () => {
                   <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
               </div>
               <div className="h-6 w-px bg-slate-200 mx-1 shrink-0"></div>
-              <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })} />
+              <ShiftManagersTop 
+                shift={shiftFilter} 
+                data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} 
+                staffList={staffList} 
+                onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })} 
+                onUpdateStaff={handleUpdateStaff}
+              />
               <div className="relative w-48 ml-auto shrink-0">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
                   <input type="text" placeholder="FILTRAR..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white transition-all uppercase" />
@@ -305,7 +307,14 @@ const App: React.FC = () => {
             {activeTab === 'parte' ? (
                 <div className="flex-1 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-full">
                     {subTab === 'TRANSFERENCIA' ? (
-                        <div className="flex-1 overflow-auto"><TransferTable data={transferRecords.filter(t => t.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} /></div>
+                        <div className="flex-1 overflow-auto">
+                          <TransferTable 
+                            data={transferRecords.filter(t => t.shift === shiftFilter)} 
+                            onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} 
+                            onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} 
+                            onUpdateStaff={handleUpdateStaff}
+                          />
+                        </div>
                     ) : (
                         <div className="flex-1 overflow-hidden">
                           <ReportTable 
@@ -324,7 +333,6 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* PICKER GLOBAL - MEJORADO CON BOTÓN DE "MARCAR PRESENTE" RÁPIDO */}
       {pickerState && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-4">
             <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 flex flex-col max-h-[85vh]">
@@ -342,7 +350,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
-                    {filteredPickerStaff.map((s, idx) => {
+                    {filteredPickerStaff.map((s) => {
                         let isCurrent = false;
                         if (pickerState.type === 'route') isCurrent = records.find(r => r.id === pickerState.targetId)?.[pickerState.field]?.id === s.id;
                         else if (pickerState.type === 'transfer') {
@@ -354,6 +362,12 @@ const App: React.FC = () => {
                           isCurrent = s.name === metaName;
                         }
 
+                        // RESTRICT LICENSES BY GENDER
+                        const filteredReasons = Object.values(AbsenceReason).filter(reason => {
+                            if (s.gender === 'MASCULINO' && (reason === AbsenceReason.MATERNIDAD || reason === AbsenceReason.DIA_FEMENINO)) return false;
+                            return true;
+                        });
+
                         return (
                         <div key={s.id} className="relative group">
                             <button 
@@ -363,25 +377,19 @@ const App: React.FC = () => {
                                 }`}
                             >
                                 <div className="flex items-center gap-4">
-                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${isCurrent ? 'bg-indigo-600 text-white' : s.id.startsWith('F') ? 'bg-pink-50 text-pink-500' : 'bg-indigo-50 text-indigo-500'}`}>{s.name.charAt(0)}</div>
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${isCurrent ? 'bg-indigo-600 text-white' : s.gender === 'FEMENINO' ? 'bg-pink-50 text-pink-500' : 'bg-indigo-50 text-indigo-500'}`}>{s.name.charAt(0)}</div>
                                     <div>
                                       <div className="flex items-center gap-2">
                                         <p className="text-[12px] font-black uppercase text-slate-800 leading-none">{s.name}</p>
                                         {isCurrent && <div className="bg-indigo-600 text-white p-0.5 rounded-full"><Check size={10} /></div>}
                                       </div>
-                                      <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest leading-none">LEGAJO: {s.id}</p>
+                                      <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest leading-none">LEGAJO: {s.id} | {s.gender}</p>
                                     </div>
                                 </div>
                                 {s.status === StaffStatus.ABSENT ? (
                                     <div className="flex items-center gap-2">
                                       <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase ${getAbsenceStyles(s.address || 'FALTA')}`}>{s.address || 'FALTA'}</span>
-                                      <button 
-                                          onClick={(e) => toggleStaffStatusFromPicker(e, s)}
-                                          className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all shadow-md group/btn"
-                                          title="Marcar como Presente"
-                                      >
-                                          <UserCheck size={14} />
-                                      </button>
+                                      <button onClick={(e) => toggleStaffStatusFromPicker(e, s)} className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all shadow-md"><UserCheck size={14} /></button>
                                     </div>
                                 ) : (
                                     <div onClick={(e) => { e.stopPropagation(); setExpandingAbsenceId(expandingAbsenceId === s.id ? null : s.id); }} className="p-3 rounded-xl transition-all shadow-sm bg-red-500 text-white hover:bg-red-600"><UserMinus size={16} /></div>
@@ -389,19 +397,13 @@ const App: React.FC = () => {
                             </button>
                             {expandingAbsenceId === s.id && (
                                 <div className="mt-2 p-4 bg-white border-2 border-slate-100 rounded-[2rem] shadow-xl grid grid-cols-2 gap-2 animate-in slide-in-from-top-2">
-                                    {Object.values(AbsenceReason).map(reason => (
+                                    {filteredReasons.map(reason => (
                                         <button key={reason} onClick={(e) => toggleStaffStatusFromPicker(e, s, reason)} className={`px-4 py-3 rounded-xl text-[9px] font-black uppercase transition-all border ${getAbsenceStyles(reason)} hover:brightness-95`}>{reason}</button>
                                     ))}
                                 </div>
                             )}
                         </div>
                     )})}
-                    {filteredPickerStaff.length === 0 && (
-                        <div className="p-10 text-center opacity-30 flex flex-col items-center">
-                            <Search size={40} className="mb-4" />
-                            <p className="text-[10px] font-black uppercase tracking-widest">No hay resultados disponibles</p>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>

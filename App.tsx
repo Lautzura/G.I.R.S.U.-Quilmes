@@ -23,7 +23,6 @@ import {
     ChevronLeft,
     ChevronRight,
     Save,
-    RotateCcw,
     Plus,
     CheckCircle2,
     X,
@@ -40,7 +39,14 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<RouteRecord[]>([]);
   const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [shiftMetadata, setShiftMetadata] = useState<ShiftMetadata>({ supervisor: '', subSupervisor: '', absences: [] });
+  
+  // Metadatos de turno independientes por turno
+  const [shiftMetadataMap, setShiftMetadataMap] = useState<Record<string, ShiftMetadata>>({
+    'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] },
+    'TARDE': { supervisor: '', subSupervisor: '', absences: [] },
+    'NOCHE': { supervisor: '', subSupervisor: '', absences: [] },
+    'TODOS': { supervisor: '', subSupervisor: '', absences: [] }
+  });
   
   const [searchTerm, setSearchTerm] = useState('');
   const [shiftFilter, setShiftFilter] = useState<'MAÑANA' | 'TARDE' | 'NOCHE' | 'TODOS'>('MAÑANA');
@@ -82,7 +88,7 @@ const App: React.FC = () => {
     const updated = { 
         ...staff, 
         status: newStatus, 
-        address: newStatus === StaffStatus.ABSENT ? (reason || AbsenceReason.FALTA_SIN_AVISO) : '' 
+        address: newStatus === StaffStatus.ABSENT ? (reason || AbsenceReason.ARTICULO_95) : '' 
     };
     handleUpdateStaff(updated);
     if (newStatus === StaffStatus.ABSENT) setExpandingAbsenceId(null);
@@ -142,7 +148,12 @@ const App: React.FC = () => {
 
     setRecords(savedData ? JSON.parse(savedData) : generateInitialDayData(selectedDate));
     setStaffList(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
-    setShiftMetadata(savedMeta ? JSON.parse(savedMeta) : { supervisor: '', subSupervisor: '', absences: [] });
+    setShiftMetadataMap(savedMeta ? JSON.parse(savedMeta) : {
+        'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] },
+        'TARDE': { supervisor: '', subSupervisor: '', absences: [] },
+        'NOCHE': { supervisor: '', subSupervisor: '', absences: [] },
+        'TODOS': { supervisor: '', subSupervisor: '', absences: [] }
+    });
     setTransferRecords(savedTrans ? JSON.parse(savedTrans) : generateInitialTransferData(selectedDate));
     setIsLoaded(true);
   }, [selectedDate]);
@@ -152,9 +163,9 @@ const App: React.FC = () => {
     const dateKey = `girsu_v6_${selectedDate}`;
     localStorage.setItem(dateKey, JSON.stringify(records));
     localStorage.setItem(`staff_v6_${selectedDate}`, JSON.stringify(staffList));
-    localStorage.setItem(`meta_v6_${selectedDate}`, JSON.stringify(shiftMetadata));
+    localStorage.setItem(`meta_v6_${selectedDate}`, JSON.stringify(shiftMetadataMap));
     localStorage.setItem(`trans_v6_${selectedDate}`, JSON.stringify(transferRecords));
-  }, [records, staffList, shiftMetadata, transferRecords, selectedDate, isLoaded]);
+  }, [records, staffList, shiftMetadataMap, transferRecords, selectedDate, isLoaded]);
 
   const filteredRecords = useMemo(() => {
     let res = records.filter(r => shiftFilter === 'TODOS' || r.shift === shiftFilter);
@@ -173,7 +184,14 @@ const App: React.FC = () => {
     if (pickerState.type === 'route') {
       setRecords(prev => prev.map(r => r.id === pickerState.targetId ? { ...r, [pickerState.field]: staff } : r));
     } else if (pickerState.type === 'meta') {
-      setShiftMetadata(prev => ({ ...prev, [pickerState.field]: staff ? staff.name : '' }));
+      const currentShift = shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter;
+      setShiftMetadataMap(prev => ({
+        ...prev,
+        [currentShift]: {
+            ...prev[currentShift],
+            [pickerState.field]: staff ? staff.name : ''
+        }
+      }));
     } else if (pickerState.type === 'transfer') {
       setTransferRecords(prev => prev.map(tr => {
         if (tr.id === pickerState.targetId) {
@@ -192,7 +210,6 @@ const App: React.FC = () => {
     setPickerSearch('');
   };
 
-  // Lógica para identificar quién está seleccionado actualmente para priorizarlo en la lista
   const currentlySelectedStaffId = useMemo(() => {
     if (!pickerState) return null;
     if (pickerState.type === 'route') {
@@ -208,23 +225,22 @@ const App: React.FC = () => {
       return (tr[pickerState.field as keyof TransferRecord] as StaffMember)?.id;
     }
     if (pickerState.type === 'meta') {
-      const currentName = shiftMetadata[pickerState.field as keyof ShiftMetadata] as string;
+      const currentMetadata = shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter];
+      const currentName = currentMetadata[pickerState.field as keyof ShiftMetadata] as string;
       const found = staffList.find(s => s.name === currentName);
       return found ? found.id : null;
     }
     return null;
-  }, [pickerState, records, transferRecords, shiftMetadata, staffList]);
+  }, [pickerState, records, transferRecords, shiftMetadataMap, staffList, shiftFilter]);
 
   const filteredStaffForPicker = useMemo(() => {
     if (!pickerState) return [];
     
-    // 1. Filtrar por búsqueda
     let list = staffList.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || s.id.includes(pickerSearch);
       return matchesSearch;
     });
 
-    // 2. Filtrar por rol (si es CHOFER o AUXILIAR)
     const targetRole = pickerState.role.toUpperCase();
     if (targetRole.includes('CHOFER')) {
       list = list.filter(s => s.role === 'CHOFER');
@@ -234,16 +250,11 @@ const App: React.FC = () => {
       list = list.filter(s => s.role === 'MAQUINISTA');
     }
 
-    // 3. Ordenar: El seleccionado primero, luego por status, luego por nombre
     return list.sort((a, b) => {
-      // Prioridad 1: El actualmente asignado
       if (a.id === currentlySelectedStaffId) return -1;
       if (b.id === currentlySelectedStaffId) return 1;
-
-      // Prioridad 2: No ausentes primero
       if (a.status !== StaffStatus.ABSENT && b.status === StaffStatus.ABSENT) return -1;
       if (a.status === StaffStatus.ABSENT && b.status !== StaffStatus.ABSENT) return 1;
-      
       return a.name.localeCompare(b.name);
     });
   }, [staffList, pickerSearch, pickerState, currentlySelectedStaffId]);
@@ -308,22 +319,25 @@ const App: React.FC = () => {
           </div>
         </header>
 
+        {/* BARRA DE FILTRO GLOBAL (SHIFT) */}
+        <div className="bg-white px-6 py-3 border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm z-30">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
+                {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
+                    <button key={s} onClick={() => setShiftFilter(s)} className={`px-8 py-2 text-[10px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{s}</button>
+                ))}
+            </div>
+            
+            <div className="relative w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                <input type="text" placeholder="BUSCAR..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/10 focus:bg-white transition-all uppercase" />
+            </div>
+        </div>
+
         <div className="flex-1 overflow-hidden p-4 bg-[#f8fafc] flex flex-col gap-4">
             <div className="max-w-[1800px] w-full mx-auto flex flex-col h-full space-y-4">
                 {activeTab === 'parte' && (
                     <>
                         <div className="bg-white p-4 rounded-[1.5rem] border border-slate-200 shadow-sm space-y-4 shrink-0">
-                            <div className="flex flex-col lg:flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
-                                <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-inner">
-                                    {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
-                                        <button key={s} onClick={() => setShiftFilter(s)} className={`px-6 py-2 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{s}</button>
-                                    ))}
-                                </div>
-                                <div className="relative flex-1 max-w-xl">
-                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={16} />
-                                    <input type="text" placeholder="BUSCAR RUTA, INTERNO O PERSONAL..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all uppercase placeholder:text-slate-300" />
-                                </div>
-                            </div>
                             <div className="flex flex-col xl:flex-row items-center justify-between gap-4">
                                 <div className="flex items-center gap-2">
                                     <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN" onClick={() => setSubTab('GENERAL')} />
@@ -333,7 +347,7 @@ const App: React.FC = () => {
                                 <div className="flex-1 flex items-center gap-4">
                                     <ShiftManagersTop 
                                         shift={shiftFilter} 
-                                        data={shiftMetadata} 
+                                        data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} 
                                         staffList={staffList}
                                         onOpenPicker={(field, role) => setPickerState({ type: 'meta', targetId: 'meta', field, role })}
                                     />
@@ -411,18 +425,18 @@ const App: React.FC = () => {
                             <div key={s.id} className="relative group">
                                 <button 
                                     onClick={() => handleSelectFromPicker(s)} 
-                                    className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all text-left ${isCurrentlySelected ? 'border-indigo-500 bg-indigo-50/30' : s.status === StaffStatus.ABSENT ? 'bg-red-50/30 border-red-100' : 'bg-white border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 shadow-sm'}`}
+                                    className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all text-left ${isCurrentlySelected ? 'border-indigo-500 bg-indigo-50/30' : s.status === StaffStatus.ABSENT ? 'bg-red-50/30 border-red-100' : s.status === StaffStatus.RESERVA ? 'bg-amber-50/30 border-amber-100' : 'bg-white border-slate-100 hover:border-indigo-500 hover:bg-indigo-50/50 shadow-sm'}`}
                                 >
                                     <div className="flex items-center gap-3">
                                         {isCurrentlySelected && <Star size={16} className="text-indigo-600 fill-indigo-600 animate-pulse shrink-0" />}
                                         <div>
                                             <p className={`text-[12px] font-black uppercase leading-none transition-colors ${isCurrentlySelected ? 'text-indigo-800' : s.status === StaffStatus.ABSENT ? 'text-red-800' : 'text-slate-800 group-hover:text-indigo-700'}`}>{s.name}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-widest">LEGAJO: {s.id} • {s.role || 'SIN ROL'}</p>
                                         </div>
                                     </div>
                                     
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-[9px] font-black px-2.5 py-1.5 rounded-xl border shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-500 text-white border-red-600' : s.status === StaffStatus.RESERVA ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                                        <span className={`text-[9px] font-black px-2.5 py-1.5 rounded-xl border shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-500 text-white border-red-600' : s.status === StaffStatus.RESERVA ? 'bg-amber-500 text-white border-amber-600' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
                                             {s.status === StaffStatus.ABSENT ? (s.address || 'AUSENTE') : s.status}
                                         </span>
                                         
@@ -446,7 +460,15 @@ const App: React.FC = () => {
                                 {expandingAbsenceId === s.id && (
                                     <div className="mt-2 p-3 bg-white border-2 border-red-100 rounded-2xl shadow-xl animate-in slide-in-from-top-2 duration-200 z-10 grid grid-cols-2 gap-1.5">
                                         <p className="col-span-2 text-[8px] font-black text-red-500 uppercase tracking-widest px-2 mb-1">Motivo de la ausencia:</p>
-                                        {Object.values(AbsenceReason).map(reason => (
+                                        {Object.values(AbsenceReason)
+                                            .filter(reason => {
+                                                // Filtrar motivos específicos si es hombre
+                                                if (s.gender === 'MASCULINO') {
+                                                    return reason !== AbsenceReason.DIA_FEMENINO && reason !== AbsenceReason.MATERNIDAD;
+                                                }
+                                                return true;
+                                            })
+                                            .map(reason => (
                                             <button 
                                                 key={reason}
                                                 onClick={(e) => toggleStaffStatusFromPicker(e, s, reason)}
@@ -475,7 +497,7 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
+      <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} records={records} />
       <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => {
             const newRoute: RouteRecord = { id: `${z}-${s}-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'Manual', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: subTab === 'REPASO' ? 'REPASO_LATERAL' : 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' };
             setRecords([...records, newRoute]);

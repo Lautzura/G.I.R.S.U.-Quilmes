@@ -15,7 +15,8 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
   const [formData, setFormData] = useState({
     id: staff.id,
     name: staff.name,
-    role: (staff.role || 'AUXILIAR') as 'CHOFER' | 'AUXILIAR' | 'ENCARGADO',
+    role: (staff.role || 'AUXILIAR') as StaffMember['role'],
+    gender: (staff.gender || 'MASCULINO') as 'MASCULINO' | 'FEMENINO',
     preferredShift: (staff.preferredShift || 'MAÑANA') as 'MAÑANA' | 'TARDE' | 'NOCHE',
     status: staff.status,
     assignedZone: staff.assignedZone || '',
@@ -35,7 +36,8 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
     setFormData({
       id: staff.id,
       name: staff.name,
-      role: (staff.role || 'AUXILIAR') as 'CHOFER' | 'AUXILIAR' | 'ENCARGADO',
+      role: (staff.role || 'AUXILIAR') as StaffMember['role'],
+      gender: (staff.gender || 'MASCULINO') as 'MASCULINO' | 'FEMENINO',
       preferredShift: (staff.preferredShift || 'MAÑANA') as 'MAÑANA' | 'TARDE' | 'NOCHE',
       status: staff.status,
       assignedZone: staff.assignedZone || '',
@@ -54,6 +56,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
       id: formData.id,
       name: formData.name.toUpperCase(),
       role: formData.role,
+      gender: formData.gender,
       preferredShift: formData.preferredShift,
       status: formData.status,
       assignedZone: formData.assignedZone,
@@ -68,7 +71,10 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
     AbsenceReason.ART, 
     AbsenceReason.VACACIONES, 
     AbsenceReason.LICENCIA_MEDICA, 
-    AbsenceReason.SUSPENSION
+    AbsenceReason.SUSPENSION,
+    AbsenceReason.MATERNIDAD,
+    AbsenceReason.LICENCIA_GREMIAL,
+    AbsenceReason.ASISTENCIA_FAMILIAR
   ].includes(formData.address as AbsenceReason);
 
   return (
@@ -108,7 +114,14 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
               >
                 <option value="AUXILIAR">AUXILIAR</option>
                 <option value="CHOFER">CHOFER</option>
+                <option value="SUPERVISOR">SUPERVISOR</option>
+                <option value="RESERVA">RESERVA</option>
+                <option value="FRANQUERO">FRANQUERO</option>
+                <option value="CARGA LATERAL">CARGA LATERAL</option>
                 <option value="ENCARGADO">ENCARGADO</option>
+                <option value="MAQUINISTA">MAQUINISTA</option>
+                <option value="BALANCERO">BALANCERO</option>
+                <option value="LONERO">LONERO</option>
               </select>
             </div>
           </div>
@@ -126,6 +139,21 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
 
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Género</label>
+              <div className="flex gap-2">
+                {(['MASCULINO', 'FEMENINO'] as const).map(g => (
+                    <button
+                        key={g}
+                        type="button"
+                        onClick={() => setFormData({...formData, gender: g})}
+                        className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all border ${formData.gender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-slate-50 text-slate-400 border-slate-200'}`}
+                    >
+                        {g === 'MASCULINO' ? 'HOMBRE' : 'MUJER'}
+                    </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Turno Pref.</label>
               <select 
                 value={formData.preferredShift}
@@ -135,18 +163,6 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                 <option value="MAÑANA">MAÑANA</option>
                 <option value="TARDE">TARDE</option>
                 <option value="NOCHE">NOCHE</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                <MapPin size={12} className="text-indigo-500" /> Zona Asignada
-              </label>
-              <select 
-                value={formData.assignedZone}
-                onChange={e => setFormData({...formData, assignedZone: e.target.value})}
-                className="w-full px-5 py-3.5 bg-slate-50 border border-slate-100 rounded-2xl text-xs font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all"
-              >
-                {availableZones.map(z => <option key={z} value={z}>{z}</option>)}
               </select>
             </div>
           </div>
@@ -182,7 +198,14 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                     className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl text-[10px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 disabled:opacity-30 disabled:cursor-not-allowed"
                     >
                     <option value="">-- SELECCIONAR --</option>
-                    {Object.values(AbsenceReason).map(r => (
+                    {Object.values(AbsenceReason)
+                        .filter(reason => {
+                            if (formData.gender === 'MASCULINO') {
+                                return reason !== AbsenceReason.DIA_FEMENINO && reason !== AbsenceReason.MATERNIDAD;
+                            }
+                            return true;
+                        })
+                        .map(r => (
                         <option key={r} value={r}>{r}</option>
                     ))}
                     </select>
@@ -213,9 +236,6 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                                 onChange={e => setFormData({...formData, absenceReturnDate: e.target.value})} 
                                 className="w-full px-5 py-3.5 bg-white border border-indigo-100 rounded-2xl text-xs font-black outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer"
                             />
-                            <p className="text-[8px] font-bold text-slate-400 uppercase text-center mt-1 italic">
-                                * El sistema lo pondrá presente automáticamente al iniciar el día seleccionado.
-                            </p>
                         </div>
                     )}
                  </div>

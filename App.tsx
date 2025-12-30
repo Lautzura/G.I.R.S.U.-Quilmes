@@ -24,7 +24,8 @@ import {
     X,
     UserMinus,
     UserX,
-    Check
+    Check,
+    UserCheck
 } from 'lucide-react';
 
 // HELPER PARA COLORES DINÁMICOS - Exportado para ser usado en otros componentes
@@ -306,7 +307,15 @@ const App: React.FC = () => {
                     {subTab === 'TRANSFERENCIA' ? (
                         <div className="flex-1 overflow-auto"><TransferTable data={transferRecords.filter(t => t.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} /></div>
                     ) : (
-                        <div className="flex-1 overflow-hidden"><ReportTable data={filteredRecords} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} /></div>
+                        <div className="flex-1 overflow-hidden">
+                          <ReportTable 
+                            data={filteredRecords} 
+                            onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} 
+                            onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} 
+                            onUpdateStaff={handleUpdateStaff}
+                            activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} 
+                          />
+                        </div>
                     )}
                 </div>
             ) : (
@@ -315,7 +324,7 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* PICKER GLOBAL - MEJORADO PARA ENCONTRAR RÁPIDO A LA PERSONA ASIGNADA */}
+      {/* PICKER GLOBAL - MEJORADO CON BOTÓN DE "MARCAR PRESENTE" RÁPIDO */}
       {pickerState && (
         <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-4">
             <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 flex flex-col max-h-[85vh]">
@@ -334,11 +343,9 @@ const App: React.FC = () => {
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
                     {filteredPickerStaff.map((s, idx) => {
-                        // DETECTAR SI ES LA PERSONA ASIGNADA ACTUALMENTE
                         let isCurrent = false;
-                        if (pickerState.type === 'route') {
-                          isCurrent = records.find(r => r.id === pickerState.targetId)?.[pickerState.field]?.id === s.id;
-                        } else if (pickerState.type === 'transfer') {
+                        if (pickerState.type === 'route') isCurrent = records.find(r => r.id === pickerState.targetId)?.[pickerState.field]?.id === s.id;
+                        else if (pickerState.type === 'transfer') {
                           const tr = transferRecords.find(t => t.id === pickerState.targetId);
                           if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) isCurrent = tr?.units[pickerState.unitIdx].driver?.id === s.id;
                           else isCurrent = (tr as any)?.[pickerState.field]?.id === s.id;
@@ -366,7 +373,16 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                                 {s.status === StaffStatus.ABSENT ? (
-                                    <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase ${getAbsenceStyles(s.address || 'FALTA')}`}>{s.address || 'FALTA'}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-[9px] font-black px-3 py-1 rounded-lg border uppercase ${getAbsenceStyles(s.address || 'FALTA')}`}>{s.address || 'FALTA'}</span>
+                                      <button 
+                                          onClick={(e) => toggleStaffStatusFromPicker(e, s)}
+                                          className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all shadow-md group/btn"
+                                          title="Marcar como Presente"
+                                      >
+                                          <UserCheck size={14} />
+                                      </button>
+                                    </div>
                                 ) : (
                                     <div onClick={(e) => { e.stopPropagation(); setExpandingAbsenceId(expandingAbsenceId === s.id ? null : s.id); }} className="p-3 rounded-xl transition-all shadow-sm bg-red-500 text-white hover:bg-red-600"><UserMinus size={16} /></div>
                                 )}

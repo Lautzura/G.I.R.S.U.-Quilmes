@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Edit3, MapPin, Briefcase, Calendar, Infinity, User, UserRound, ArrowRight } from 'lucide-react';
+import { X, Save, Edit3, MapPin, Briefcase, Calendar, Infinity as InfinityIcon, User, UserRound, ArrowRight } from 'lucide-react';
 import { StaffMember, StaffStatus, AbsenceReason, RouteRecord } from '../types';
 
 interface EditStaffModalProps {
@@ -69,16 +69,6 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
     });
     onClose();
   };
-
-  const isLongTermAbsence = [
-    AbsenceReason.ART, 
-    AbsenceReason.VACACIONES, 
-    AbsenceReason.LICENCIA_MEDICA, 
-    AbsenceReason.SUSPENSION,
-    AbsenceReason.MATERNIDAD,
-    AbsenceReason.LICENCIA_GREMIAL,
-    AbsenceReason.ASISTENCIA_FAMILIAR
-  ].includes(formData.address as AbsenceReason);
 
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
@@ -266,7 +256,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                                 )}
                                 {formData.isIndefiniteAbsence && (
                                     <div className="w-full px-4 py-2 bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-black text-slate-400 flex items-center justify-center gap-2 uppercase">
-                                        <Infinity size={14} /> Sin fecha de retorno
+                                        <InfinityIcon size={14} /> Sin fecha de retorno
                                     </div>
                                 )}
                             </div>

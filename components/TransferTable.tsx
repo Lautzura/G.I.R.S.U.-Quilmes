@@ -32,32 +32,23 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
     onUpdateRow(rowId, 'units', newUnits);
   };
 
-  // Función de navegación inteligente para Tolva
-  const navigateTolva = (e: React.KeyboardEvent, rowId: string, type: 'domain' | 'trip', uIdx: number, field?: string, tIdx?: number) => {
+  const navigateTolva = (e: React.KeyboardEvent, rowId: string, uIdx: number, field: string) => {
     const { key } = e;
     const isEnter = key === 'Enter';
     const isUp = key === 'ArrowUp';
     const isDown = key === 'ArrowDown';
 
-    if (isEnter || isDown) {
+    if (isEnter || isDown || isUp) {
         e.preventDefault();
-        const nextIdx = uIdx + 1;
-        const selector = nextIdx < 3 
-            ? `[data-unit="${nextIdx}"][data-field="${field}"]` 
-            : null;
-        if (selector) {
-            const el = document.querySelector(selector) as HTMLInputElement;
-            if (el) { el.focus(); el.select(); }
-        }
-    } else if (isUp) {
-        e.preventDefault();
-        const prevIdx = uIdx - 1;
-        const selector = prevIdx >= 0 
-            ? `[data-unit="${prevIdx}"][data-field="${field}"]` 
-            : null;
-        if (selector) {
-            const el = document.querySelector(selector) as HTMLInputElement;
-            if (el) { el.focus(); el.select(); }
+        const nextIdx = isUp ? uIdx - 1 : uIdx + 1;
+        if (nextIdx >= 0 && nextIdx < 3) {
+            // Buscamos específicamente dentro del contenedor de la FILA ACTUAL para evitar saltos locos
+            const container = document.querySelector(`[data-row-id="${rowId}"]`);
+            const target = container?.querySelector(`[data-unit="${nextIdx}"][data-field="${field}"]`) as HTMLInputElement;
+            if (target) {
+                target.focus();
+                target.select();
+            }
         }
     }
   };
@@ -100,7 +91,7 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
         </div>
       )}
       {data.map((row) => (
-        <div key={row.id} className="bg-white rounded-[1.5rem] border-2 border-slate-200 overflow-hidden shadow-sm flex flex-col shrink-0 mb-4">
+        <div key={row.id} data-row-id={row.id} className="bg-white rounded-[1.5rem] border-2 border-slate-200 overflow-hidden shadow-sm flex flex-col shrink-0 mb-4">
             <div className="flex">
                 <div className="flex-1 flex flex-col border-r border-slate-100">
                     <div className="flex bg-slate-900 text-white text-[8px] font-black uppercase tracking-widest text-center py-2">
@@ -116,13 +107,13 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                                 <StaffSlot value={unit.driver} onClick={() => onOpenPicker(row.id, 'units', `CHOFER ${uIdx + 1}`, uIdx)} />
                             </div>
                             <div className="w-44 grid grid-cols-2 p-1 gap-1">
-                                <input data-unit={uIdx} data-field="dom1" type="text" value={unit.domain1} onChange={e => updateUnitField(row.id, uIdx, 'domain1', e.target.value.toUpperCase())} onKeyDown={e => navigateTolva(e, row.id, 'domain', uIdx, 'dom1')} className="text-center font-mono font-black text-[9px] bg-slate-50 rounded border outline-none uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500" placeholder="DOM 1" />
-                                <input data-unit={uIdx} data-field="dom2" type="text" value={unit.domain2} onChange={e => updateUnitField(row.id, uIdx, 'domain2', e.target.value.toUpperCase())} onKeyDown={e => navigateTolva(e, row.id, 'domain', uIdx, 'dom2')} className="text-center font-mono font-black text-[9px] bg-slate-50 rounded border outline-none uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500" placeholder="DOM 2" />
+                                <input data-unit={uIdx} data-field="dom1" type="text" value={unit.domain1} onChange={e => updateUnitField(row.id, uIdx, 'domain1', e.target.value.toUpperCase())} onKeyDown={e => navigateTolva(e, row.id, uIdx, 'dom1')} className="text-center font-mono font-black text-[9px] bg-slate-50 rounded border outline-none uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500" placeholder="DOM 1" />
+                                <input data-unit={uIdx} data-field="dom2" type="text" value={unit.domain2} onChange={e => updateUnitField(row.id, uIdx, 'domain2', e.target.value.toUpperCase())} onKeyDown={e => navigateTolva(e, row.id, uIdx, 'dom2')} className="text-center font-mono font-black text-[9px] bg-slate-50 rounded border outline-none uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500" placeholder="DOM 2" />
                             </div>
                             {unit.trips.map((trip, tIdx) => (
                                 <div key={tIdx} className="flex-1 border-l border-slate-100 flex items-center">
-                                    <input data-unit={uIdx} data-field={`t${tIdx}h`} type="text" value={trip.hora} onChange={e => updateTrip(row.id, uIdx, tIdx, 'hora', e.target.value)} onKeyDown={e => navigateTolva(e, row.id, 'trip', uIdx, `t${tIdx}h`)} className="w-1/2 text-center text-[10px] font-black outline-none border-r border-slate-50 focus:bg-indigo-50" placeholder="--:--" />
-                                    <input data-unit={uIdx} data-field={`t${tIdx}n`} type="text" value={trip.ton} onChange={e => updateTrip(row.id, uIdx, tIdx, 'ton', e.target.value)} onKeyDown={e => navigateTolva(e, row.id, 'trip', uIdx, `t${tIdx}n`)} className="w-1/2 text-center text-[10px] font-black text-indigo-600 outline-none focus:bg-indigo-50" placeholder="0.0" />
+                                    <input data-unit={uIdx} data-field={`t${tIdx}h`} type="text" value={trip.hora} onChange={e => updateTrip(row.id, uIdx, tIdx, 'hora', e.target.value)} onKeyDown={e => navigateTolva(e, row.id, uIdx, `t${tIdx}h`)} className="w-1/2 text-center text-[10px] font-black outline-none border-r border-slate-50 focus:bg-indigo-50" placeholder="--:--" />
+                                    <input data-unit={uIdx} data-field={`t${tIdx}n`} type="text" value={trip.ton} onChange={e => updateTrip(row.id, uIdx, tIdx, 'ton', e.target.value)} onKeyDown={e => navigateTolva(e, row.id, uIdx, `t${tIdx}n`)} className="w-1/2 text-center text-[10px] font-black text-indigo-600 outline-none focus:bg-indigo-50" placeholder="0.0" />
                                 </div>
                             ))}
                         </div>

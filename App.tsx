@@ -176,7 +176,6 @@ const App: React.FC = () => {
     localStorage.setItem(`meta_v7_${selectedDate}`, JSON.stringify(shiftMetadataMap));
   }, [records, shiftMetadataMap, selectedDate, isLoaded]);
 
-  // Fix: handleUpdateStaff now takes originalId to support changing the legajo
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
     const idToFind = originalId || updatedMember.id;
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
@@ -306,7 +305,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={() => {}} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} /></div>
+                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={() => {}} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
             )}
         </div>
       </main>

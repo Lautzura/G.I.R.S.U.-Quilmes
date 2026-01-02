@@ -35,11 +35,14 @@ import {
     ArrowLeft,
     ChevronDown,
     UserRound,
-    Clock
+    Clock,
+    Zap
 } from 'lucide-react';
 
 export const getAbsenceStyles = (reason: string) => {
     const r = reason?.toUpperCase() || '';
+    // Rojo de emergencia para faltas injustificadas
+    if (r.includes('INJUSTIFICADA')) return 'bg-[#dc2626] text-white border-[#991b1b] shadow-inner';
     if (r.includes('SUSPENSION')) return 'bg-red-100 text-red-700 border-red-200';
     if (r.includes('VACACIONES') || r.includes('RESERVA')) return 'bg-amber-100 text-amber-700 border-amber-200';
     if (r.includes('ART') || r.includes('MEDICA') || r.includes('95')) return 'bg-teal-100 text-teal-700 border-teal-200';
@@ -291,7 +294,6 @@ const App: React.FC = () => {
     const search = pickerSearch.toLowerCase().trim();
     const field = pickerState.field.toLowerCase();
     
-    // Encontrar quién está asignado actualmente para ponerlo arriba
     let currentlyAssignedId = '';
     if (pickerState.type === 'route') {
         const route = records.find(r => r.id === pickerState.targetId);
@@ -302,6 +304,12 @@ const App: React.FC = () => {
             currentlyAssignedId = tr?.units[pickerState.unitIdx]?.driver?.id || '';
         } else {
             currentlyAssignedId = (tr as any)?.[pickerState.field]?.id || '';
+        }
+    } else if (pickerState.type === 'meta') {
+        const currentShift = shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter;
+        const metaName = shiftMetadataMap[currentShift]?.[pickerState.field as keyof ShiftMetadata];
+        if (typeof metaName === 'string') {
+            currentlyAssignedId = staffList.find(s => s.name === metaName)?.id || '';
         }
     }
 
@@ -318,19 +326,14 @@ const App: React.FC = () => {
     });
 
     return filtered.sort((a, b) => {
-        // El asignado actual va primero siempre
         if (a.id === currentlyAssignedId) return -1;
         if (b.id === currentlyAssignedId) return 1;
-
         if (search !== '') return a.name.localeCompare(b.name);
-        
-        // Luego los presentes antes que los ausentes
         if (a.status === StaffStatus.PRESENT && b.status === StaffStatus.ABSENT) return -1;
         if (a.status === StaffStatus.ABSENT && b.status === StaffStatus.PRESENT) return 1;
-        
         return a.name.localeCompare(b.name);
     });
-  }, [staffList, pickerSearch, pickerState, records, transferRecords]);
+  }, [staffList, pickerSearch, pickerState, records, transferRecords, shiftMetadataMap, shiftFilter]);
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden font-['Plus_Jakarta_Sans']">
@@ -418,42 +421,37 @@ const App: React.FC = () => {
                     <div className="p-8 space-y-4">
                         {filteredPickerStaff.length > 0 ? filteredPickerStaff.map((s) => {
                             const isAbsent = s.status === StaffStatus.ABSENT;
-                            const isCurrentlyAssigned = (() => {
-                                if (pickerState.type === 'route') {
-                                    const r = records.find(rec => rec.id === pickerState.targetId);
-                                    return (r as any)?.[pickerState.field]?.id === s.id;
-                                } else if (pickerState.type === 'transfer') {
-                                    const tr = transferRecords.find(t => t.id === pickerState.targetId);
-                                    if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) {
-                                        return tr?.units[pickerState.unitIdx]?.driver?.id === s.id;
-                                    }
-                                    return (tr as any)?.[pickerState.field]?.id === s.id;
-                                }
-                                return false;
-                            })();
+                            const isCurrentlyAssigned = s.id === (
+                                pickerState.type === 'route' ? (records.find(r => r.id === pickerState.targetId) as any)?.[pickerState.field]?.id :
+                                pickerState.type === 'transfer' ? (
+                                    pickerState.field === 'units' ? transferRecords.find(t => t.id === pickerState.targetId)?.units[pickerState.unitIdx!]?.driver?.id :
+                                    (transferRecords.find(t => t.id === pickerState.targetId) as any)?.[pickerState.field]?.id
+                                ) :
+                                pickerState.type === 'meta' ? staffList.find(sl => sl.name === (shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter] as any)?.[pickerState.field])?.id : ''
+                            );
                             
                             const isPickingAbsence = absencePickerId === s.id;
                             const absenceStyle = isAbsent ? getAbsenceStyles(s.address || 'FALTA') : '';
                             
                             return (
-                                <div key={s.id} className={`rounded-[2.5rem] transition-all overflow-hidden border-2 shadow-sm mb-4 bg-white ${isCurrentlyAssigned ? 'border-indigo-600 ring-2 ring-indigo-600/20 ring-inset' : isAbsent ? `${absenceStyle} border-transparent` : 'border-slate-50 hover:border-indigo-100'}`}>
+                                <div key={s.id} className={`rounded-[2.5rem] transition-all overflow-hidden border-2 shadow-sm mb-4 bg-white ${isCurrentlyAssigned ? 'border-indigo-600 ring-2 ring-indigo-600/20 ring-inset scale-[1.02]' : isAbsent ? `${absenceStyle} border-transparent` : 'border-slate-50 hover:border-indigo-100'}`}>
                                     <div className="p-6">
                                         <div className="flex items-center justify-between">
                                             <div onClick={() => !isPickingAbsence && handlePickerSelection(s)} className={`flex items-center gap-5 cursor-pointer flex-1`}>
                                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${isAbsent ? 'bg-white/40' : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
                                                 <div>
                                                     <div className="flex items-center gap-2">
-                                                        {isCurrentlyAssigned && <span className="text-[7px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase tracking-tighter">Asignado actualmente</span>}
-                                                        <h4 className="text-[13px] font-black text-slate-800 uppercase leading-none">{s.name}</h4>
-                                                        <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded-md font-black">{s.role}</span>
+                                                        {isCurrentlyAssigned && <span className="text-[7px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase flex items-center gap-1 shadow-sm"><Zap size={8} className="fill-current" /> Asignado actualmente</span>}
+                                                        <h4 className={`text-[13px] font-black uppercase leading-none ${isAbsent && s.address?.includes('INJUSTIFICADA') ? 'text-white' : 'text-slate-800'}`}>{s.name}</h4>
+                                                        <span className="text-[8px] px-1.5 py-0.5 bg-slate-100/50 text-slate-500 rounded-md font-black backdrop-blur-sm">{s.role}</span>
                                                     </div>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-2">LEGAJO: {s.id} | {s.gender}</p>
-                                                    {isAbsent && !isPickingAbsence && <div className="mt-2 text-[8px] font-black text-red-600 uppercase">MOTIVO: {s.address || 'FALTA'}</div>}
+                                                    <p className={`text-[10px] font-bold uppercase tracking-[0.1em] mt-2 ${isAbsent && s.address?.includes('INJUSTIFICADA') ? 'text-white/60' : 'text-slate-400'}`}>LEGAJO: {s.id} | {s.gender}</p>
+                                                    {isAbsent && !isPickingAbsence && <div className={`mt-2 text-[8px] font-black uppercase ${s.address?.includes('INJUSTIFICADA') ? 'text-white' : 'text-red-600'}`}>MOTIVO: {s.address || 'FALTA'}</div>}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 {isPickingAbsence ? (
-                                                     <button onClick={() => setAbsencePickerId(null)} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:bg-slate-200 transition-all"><X size={20} /></button>
+                                                     <button onClick={() => setAbsencePickerId(null)} className="p-3 bg-white/20 text-white rounded-2xl hover:bg-white/30 transition-all"><X size={20} /></button>
                                                 ) : (
                                                     <button 
                                                         onClick={(e) => { 
@@ -475,25 +473,23 @@ const App: React.FC = () => {
                                             </div>
                                         </div>
                                         
-                                        {/* MINI FICHA DE MOTIVOS DE FALTA */}
                                         {isPickingAbsence && (
                                             <div className="mt-6 pt-6 border-t border-black/5 animate-in slide-in-from-top duration-300">
                                                 <div className="flex items-center gap-2 mb-4">
                                                     <AlertTriangle size={14} className="text-red-600" />
-                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Seleccionar motivo de la falta:</p>
+                                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Motivo de la ausencia:</p>
                                                 </div>
                                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                    {Object.values(AbsenceReason).map(reason => (
+                                                    {Object.values(AbsenceReason).filter(reason => {
+                                                        // Restricción por género: Maternidad y Día Femenino exclusivo para mujeres
+                                                        if (s.gender === 'MASCULINO' && (reason === AbsenceReason.MATERNIDAD || reason === AbsenceReason.DIA_FEMENINO)) return false;
+                                                        return true;
+                                                    }).map(reason => (
                                                         <button 
                                                             key={reason}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleUpdateStaff({
-                                                                    ...s,
-                                                                    status: StaffStatus.ABSENT,
-                                                                    address: reason,
-                                                                    absenceStartDate: selectedDate
-                                                                });
+                                                                handleUpdateStaff({ ...s, status: StaffStatus.ABSENT, address: reason, absenceStartDate: selectedDate });
                                                                 setAbsencePickerId(null);
                                                             }}
                                                             className={`p-3 rounded-xl text-[8px] font-black uppercase text-left transition-all border-2 border-transparent hover:border-indigo-500 ${getAbsenceStyles(reason)}`}
@@ -508,18 +504,18 @@ const App: React.FC = () => {
                                                             handleUpdateStaff({ ...s, status: StaffStatus.ABSENT, address: 'FALTA INJUSTIFICADA', absenceStartDate: selectedDate });
                                                             setAbsencePickerId(null);
                                                         }}
-                                                        className="flex-1 py-3 bg-red-600 text-white rounded-xl text-[9px] font-black uppercase"
+                                                        className="flex-1 py-4 bg-[#ef4444] text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-red-200 border-b-4 border-red-800"
                                                     >
-                                                        Falta sin motivo
+                                                        Falta Injustificada (EMERGENCIA)
                                                     </button>
                                                     <button 
                                                         onClick={() => {
                                                             handleUpdateStaff({ ...s, status: StaffStatus.RESERVA, address: '', absenceStartDate: undefined });
                                                             setAbsencePickerId(null);
                                                         }}
-                                                        className="flex-1 py-3 bg-amber-500 text-white rounded-xl text-[9px] font-black uppercase"
+                                                        className="flex-1 py-4 bg-amber-500 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-amber-200"
                                                     >
-                                                        Pasar a Reserva
+                                                        Mover a Reserva
                                                     </button>
                                                 </div>
                                             </div>

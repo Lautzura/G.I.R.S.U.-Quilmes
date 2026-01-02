@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from '../types';
-import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info } from 'lucide-react';
+import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../App';
@@ -22,6 +22,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
+  const [selectedReason, setSelectedReason] = useState<string | null>(null);
   
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
@@ -30,11 +31,14 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     }));
   };
 
+  const shiftStaff = useMemo(() => {
+    return staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift);
+  }, [staffList, selectedShift]);
+
   const displayedStaff = useMemo(() => {
-    let filtered = staffList.filter(s => {
-      const matchesShift = selectedShift === 'TODOS' || s.preferredShift === selectedShift;
+    let filtered = shiftStaff.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesShift && matchesSearch;
+      return matchesSearch;
     });
 
     return filtered.sort((a, b) => {
@@ -44,11 +48,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [staffList, selectedShift, searchTerm, sortConfig]);
+  }, [shiftStaff, searchTerm, sortConfig]);
 
   const stats = useMemo(() => {
-    const shiftStaff = staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift);
-    
     // Calcular desglose de inasistencias
     const absenceBreakdown: Record<string, number> = {};
     shiftStaff.forEach(s => {
@@ -65,7 +67,12 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
       ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length,
       absenceBreakdown: Object.entries(absenceBreakdown).sort((a, b) => b[1] - a[1])
     };
-  }, [staffList, selectedShift]);
+  }, [shiftStaff]);
+
+  const staffInReason = useMemo(() => {
+    if (!selectedReason) return [];
+    return shiftStaff.filter(s => s.status === StaffStatus.ABSENT && (s.address || 'OTRO / NO ESPECIFICADO') === selectedReason);
+  }, [shiftStaff, selectedReason]);
 
   const SortButton = ({ label, sortKey }: { label: string, sortKey: SortKey }) => (
     <button 
@@ -100,20 +107,52 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             <div className="flex items-center gap-3 mb-6 px-4">
                 <AlertCircle className="text-red-500" size={18} />
                 <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] italic">Desglose por Motivo de Inasistencia</h3>
+                <span className="text-[9px] text-slate-300 font-bold uppercase ml-auto">(Haz clic en un motivo para ver el listado)</span>
             </div>
-            <div className="flex flex-wrap gap-4 px-4">
-                {stats.absenceBreakdown.map(([reason, count]) => (
-                    <div 
-                        key={reason} 
-                        className={`px-5 py-3 rounded-2xl border flex items-center gap-4 transition-all hover:scale-105 shadow-sm ${getAbsenceStyles(reason)}`}
-                    >
-                        <span className="text-[10px] font-black uppercase tracking-tight">{reason}</span>
-                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black text-sm">
-                            {count}
+            
+            <div className="flex flex-wrap gap-4 px-4 mb-4">
+                {stats.absenceBreakdown.map(([reason, count]) => {
+                    const isActive = selectedReason === reason;
+                    return (
+                        <button 
+                            key={reason} 
+                            onClick={() => setSelectedReason(isActive ? null : reason)}
+                            className={`px-5 py-3 rounded-2xl border flex items-center gap-4 transition-all hover:scale-105 shadow-sm active:scale-95 ${getAbsenceStyles(reason)} ${isActive ? 'ring-4 ring-indigo-500/20 scale-105' : ''}`}
+                        >
+                            <span className="text-[10px] font-black uppercase tracking-tight">{reason}</span>
+                            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center font-black text-sm">
+                                {count}
+                            </div>
+                            {isActive ? <ChevronUp size={14} className="opacity-50" /> : <ChevronDown size={14} className="opacity-50" />}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {/* DETALLE DE PERSONAS POR MOTIVO SELECCIONADO */}
+            {selectedReason && (
+                <div className="mx-4 mt-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 animate-in slide-in-from-top duration-300">
+                    <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+                        <div className="flex items-center gap-3">
+                            <Info size={16} className="text-indigo-500" />
+                            <h4 className="text-[10px] font-black text-slate-600 uppercase tracking-widest italic">Personal ausente por: {selectedReason}</h4>
                         </div>
+                        <button onClick={() => setSelectedReason(null)} className="text-slate-400 hover:text-slate-600 transition-colors"><Trash2 size={16} /></button>
                     </div>
-                ))}
-            </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                        {staffInReason.map(s => (
+                            <div key={s.id} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm group hover:border-indigo-300 transition-all">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black">{s.name.charAt(0)}</div>
+                                <div className="overflow-hidden">
+                                    <p className="text-[10px] font-black text-slate-800 uppercase truncate">{s.name}</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">LEG: {s.id}</p>
+                                </div>
+                                <button onClick={() => setEditingStaff(s)} className="ml-auto p-1.5 text-slate-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100"><Edit3 size={14} /></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
       )}
 

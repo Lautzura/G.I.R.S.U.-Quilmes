@@ -6,7 +6,7 @@ import { StaffMember, StaffStatus, AbsenceReason, RouteRecord } from '../types';
 interface EditStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (member: StaffMember) => void;
+  onSave: (member: StaffMember, originalId: string) => void;
   staff: StaffMember;
   allRecords: RouteRecord[];
 }
@@ -66,7 +66,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
       absenceStartDate: formData.status === StaffStatus.ABSENT ? formData.absenceStartDate : undefined,
       absenceReturnDate: formData.status === StaffStatus.ABSENT && !formData.isIndefiniteAbsence ? formData.absenceReturnDate : undefined,
       isIndefiniteAbsence: formData.status === StaffStatus.ABSENT ? formData.isIndefiniteAbsence : false
-    });
+    }, staff.id); // Passing the original ID to handle the case where the legajo (ID) is changed.
     onClose();
   };
 

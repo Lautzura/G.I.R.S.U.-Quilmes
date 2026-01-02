@@ -96,7 +96,6 @@ const StaffCell: React.FC<StaffCellProps> = ({
 export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel }) => {
   
   const focusCell = (r: number, c: number) => {
-    // Límites de navegación
     if (r < 0 || r >= data.length || c < 0 || c > 13) return;
 
     const el = document.querySelector(`[data-row="${r}"][data-col="${c}"]`) as HTMLElement;
@@ -105,10 +104,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
         const input = el.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
         if (input) {
             input.focus();
-            if (input instanceof HTMLInputElement) {
-                // Selecciona todo el texto para poder sobrescribir rápido
-                input.select();
-            }
+            if (input instanceof HTMLInputElement) input.select();
         }
     }
   };
@@ -119,7 +115,6 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
 
     if (key === 'Enter') {
         e.preventDefault();
-        // Enter confirma y baja a la siguiente fila
         focusCell(rIdx + 1, cIdx);
     } else if (key === 'ArrowUp') {
         e.preventDefault();
@@ -128,30 +123,16 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
         e.preventDefault();
         focusCell(rIdx + 1, cIdx);
     } else if (key === 'ArrowLeft') {
-        // Solo salta a la izquierda si el cursor está al inicio
-        if (input.selectionStart === 0 && input.selectionEnd === 0) {
+        if (input.selectionStart === 0) {
             e.preventDefault();
             focusCell(rIdx, cIdx - 1);
         }
     } else if (key === 'ArrowRight') {
-        // Solo salta a la derecha si el cursor está al final
-        if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
+        if (input.selectionStart === input.value.length) {
             e.preventDefault();
             focusCell(rIdx, cIdx + 1);
         }
-    } else if (key === 'Escape') {
-        input.blur();
-        const cell = input.closest('td');
-        if (cell) cell.focus();
     }
-  };
-
-  const handleSelectKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>, rIdx: number, cIdx: number) => {
-    if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(rIdx - 1, cIdx); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); focusCell(rIdx, cIdx - 1); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); focusCell(rIdx, cIdx + 1); }
-    else if (e.key === 'Enter') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
   };
 
   return (
@@ -188,89 +169,36 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <td className="sticky left-0 z-20 font-black border-r border-black text-center bg-slate-50 uppercase text-slate-900 px-2">
                     {r.zone}
                   </td>
-                  
-                  {/* Interno (col 0) */}
                   <td data-row={rowIndex} data-col={0} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input 
-                      type="text" 
-                      value={r.internalId || ''} 
-                      onChange={e => onUpdateRecord?.(r.id, 'internalId', e.target.value)}
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)}
-                      className="w-full h-full bg-transparent text-center font-black outline-none border-none px-1"
-                    />
+                    <input type="text" value={r.internalId || ''} onChange={e => onUpdateRecord?.(r.id, 'internalId', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} className="w-full h-full bg-transparent text-center font-black outline-none border-none px-1" />
                   </td>
-                  
-                  {/* Dominio (col 1) */}
                   <td data-row={rowIndex} data-col={1} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input 
-                      type="text" 
-                      value={r.domain || ''} 
-                      onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())}
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)}
-                      className="w-full h-full bg-transparent text-center font-bold outline-none border-none px-1 uppercase"
-                    />
+                    <input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none px-1 uppercase" />
                   </td>
-                  
                   <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.aux1} role="AUXILIAR I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.aux2} role="AUXILIAR II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.aux3} role="AUXILIAR III" rowIndex={rowIndex} colIndex={5} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.aux4} role="AUXILIAR IV" rowIndex={rowIndex} colIndex={6} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
-
                   <StaffCell staff={r.replacementDriver} role="REEMPLAZO CHOFER" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.replacementAux1} role="REEMPLAZO AUXILIAR I" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.replacementAux2} role="REEMPLAZO AUXILIAR II" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
-
-                  {/* Estado (col 10) */}
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <select 
-                        value={r.zoneStatus} 
-                        onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)}
-                        onKeyDown={e => handleSelectKeyDown(e, rowIndex, 10)}
-                        className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}
-                    >
+                    <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} onKeyDown={e => { if (e.key === 'ArrowUp') focusCell(rowIndex - 1, 10); else if (e.key === 'ArrowDown') focusCell(rowIndex + 1, 10); }} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
                       <option value={ZoneStatus.PENDING}>PENDIENTE</option>
                       <option value={ZoneStatus.COMPLETE}>COMPLETA</option>
                       <option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>
                     </select>
                   </td>
-                  
-                  {/* Informe (col 11) */}
                   <td data-row={rowIndex} data-col={11} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input 
-                      type="text" 
-                      value={r.supervisionReport || ''} 
-                      onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())}
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 11)}
-                      className="w-full h-full bg-transparent outline-none px-2 font-bold text-[9px] uppercase"
-                      placeholder="..."
-                    />
+                    <input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 11)} className="w-full h-full bg-transparent outline-none px-2 font-bold text-[9px] uppercase" placeholder="..." />
                   </td>
-                  
-                  {/* Toneladas (col 12) */}
                   <td data-row={rowIndex} data-col={12} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input 
-                      type="text" 
-                      value={r.tonnage || ''} 
-                      onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)}
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 12)}
-                      className="w-full h-full bg-transparent text-center outline-none font-black text-indigo-600"
-                      placeholder="0.0"
-                    />
+                    <input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 12)} className="w-full h-full bg-transparent text-center outline-none font-black text-indigo-600" placeholder="0.0" />
                   </td>
-                  
-                  {/* Hora (col 13) */}
                   <td data-row={rowIndex} data-col={13} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <input 
-                      type="text" 
-                      value={r.departureTime || ''} 
-                      onChange={e => onUpdateRecord?.(r.id, 'departureTime', e.target.value)}
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 13)}
-                      className="w-full h-full bg-transparent text-center outline-none font-bold"
-                      placeholder="--:--"
-                    />
+                    <input type="text" value={r.departureTime || ''} onChange={e => onUpdateRecord?.(r.id, 'departureTime', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 13)} className="w-full h-full bg-transparent text-center outline-none font-bold" placeholder="--:--" />
                   </td>
-                  
                   <td className="text-center bg-white">
                     <button onClick={() => onDeleteRecord(r.id)} className="p-1.5 text-red-300 hover:text-red-600 hover:bg-red-50 rounded transition-all"><Trash2 size={14} /></button>
                   </td>

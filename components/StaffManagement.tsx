@@ -14,11 +14,12 @@ interface StaffManagementProps {
   records: RouteRecord[];
   selectedShift: string;
   searchTerm: string; 
+  onSearchChange: (val: string) => void;
 }
 
 type SortKey = 'name' | 'id' | 'role';
 
-export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, selectedShift, records, searchTerm }) => {
+export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, selectedShift, records, searchTerm, onSearchChange }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
@@ -51,7 +52,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   }, [shiftStaff, searchTerm, sortConfig]);
 
   const stats = useMemo(() => {
-    // Calcular desglose de inasistencias
     const absenceBreakdown: Record<string, number> = {};
     shiftStaff.forEach(s => {
       if (s.status === StaffStatus.ABSENT) {
@@ -93,7 +93,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
       
-      {/* TARJETAS DE ESTADÍSTICAS (ESTILO IMAGEN) */}
+      {/* TARJETAS DE ESTADÍSTICAS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="TOTAL" value={stats.total} icon={<Users size={28} />} color="indigo" />
         <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={28} />} color="emerald" />
@@ -101,7 +101,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={28} />} color="red" />
       </div>
 
-      {/* DESGLOSE DE INASISTENCIAS POR MOTIVO */}
+      {/* DESGLOSE DE INASISTENCIAS */}
       {stats.ausentes > 0 && (
         <div className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 animate-in slide-in-from-top duration-500">
             <div className="flex items-center gap-3 mb-6 px-4">
@@ -129,7 +129,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                 })}
             </div>
 
-            {/* DETALLE DE PERSONAS POR MOTIVO SELECCIONADO */}
             {selectedReason && (
                 <div className="mx-4 mt-6 p-6 bg-slate-50 rounded-[2rem] border border-slate-100 animate-in slide-in-from-top duration-300">
                     <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
@@ -156,16 +155,28 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         </div>
       )}
 
-      {/* BARRA DE GESTIÓN (ESTILO IMAGEN) */}
-      <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="flex flex-col md:flex-row items-center gap-8">
-            <div className="flex items-center gap-4">
+      {/* BARRA DE GESTIÓN Y BÚSQUEDA */}
+      <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-6">
+        <div className="flex flex-col lg:flex-row items-center gap-6 w-full xl:w-auto">
+            <div className="flex items-center gap-4 shrink-0">
                 <div className="bg-[#111827] text-white p-3 rounded-2xl shadow-xl"><LayoutList size={24} /></div>
-                <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">GESTIÓN DE PERSONAL</h2>
+                <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">PADRÓN GENERAL</h2>
             </div>
             
-            <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest mr-2">ORDENAR LISTADO POR:</span>
+            {/* BUSCADOR INTEGRADO */}
+            <div className="relative w-full lg:w-80 group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
+                <input 
+                    type="text" 
+                    placeholder="BUSCAR NOMBRE O LEGAJO..." 
+                    value={searchTerm}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm"
+                />
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 w-full lg:w-auto">
+                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mr-2 shrink-0">ORDEN:</span>
                 <SortButton label="NOMBRE" sortKey="name" />
                 <SortButton label="LEGAJO" sortKey="id" />
                 <SortButton label="ROL" sortKey="role" />
@@ -174,7 +185,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 
         <button 
           onClick={() => setIsAddModalOpen(true)} 
-          className="flex items-center gap-3 px-10 py-5 bg-[#5850ec] text-white rounded-[2rem] text-[11px] font-black uppercase shadow-2xl shadow-indigo-200 hover:brightness-110 transition-all active:scale-95"
+          className="flex items-center gap-3 px-10 py-5 bg-[#5850ec] text-white rounded-[2rem] text-[11px] font-black uppercase shadow-2xl shadow-indigo-200 hover:brightness-110 transition-all active:scale-95 shrink-0"
         >
           <UserPlus size={18} /> NUEVO INGRESO
         </button>
@@ -233,6 +244,12 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             </tbody>
           </table>
         </div>
+        {displayedStaff.length === 0 && (
+            <div className="p-20 text-center flex flex-col items-center justify-center gap-4">
+                <Search size={48} className="text-slate-200" />
+                <p className="text-slate-400 font-black uppercase text-xs">No se encontraron resultados para "{searchTerm}"</p>
+            </div>
+        )}
       </div>
 
       <AddStaffModal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} onSave={onAddStaff} />

@@ -101,6 +101,32 @@ const App: React.FC = () => {
   const [pickerState, setPickerState] = useState<{ type: 'route' | 'meta' | 'transfer', targetId: string, field: string, role: string, unitIdx?: number, expandedStaffId?: string | null } | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
 
+  // FUNCIÓN PARA GENERAR ESTRUCTURA INICIAL DE TOLVA
+  const createDefaultTransferRecords = () => (['MAÑANA', 'TARDE', 'NOCHE'] as const).map(s => ({
+    id: `trans-${s}-${Date.now()}`,
+    shift: s,
+    units: Array(3).fill(null).map((_, i) => ({
+        id: `unit-${i}`,
+        driver: null,
+        domain1: '',
+        domain2: '',
+        trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
+    })) as any,
+    maquinista: null,
+    maquinistaDomain: '',
+    auxTolva1: null,
+    auxTolva2: null,
+    auxTolva3: null,
+    auxTransferencia1: null,
+    auxTransferencia2: null,
+    encargado: null,
+    balancero1: null,
+    balancero2: null,
+    lonero: null,
+    suplenciaLona: null,
+    observaciones: ''
+  }));
+
   useEffect(() => {
     setIsLoaded(false);
     const dateKey = `girsu_v7_${selectedDate}`;
@@ -165,35 +191,26 @@ const App: React.FC = () => {
 
     setShiftMetadataMap(savedMeta ? JSON.parse(savedMeta) : { 'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] }, 'TARDE': { supervisor: '', subSupervisor: '', absences: [] }, 'NOCHE': { supervisor: '', subSupervisor: '', absences: [] }, 'TODOS': { supervisor: '', subSupervisor: '', absences: [] } });
     
+    // LÓGICA DE RECUPERACIÓN DE TOLVA REFORZADA
+    let transData: TransferRecord[] = [];
     if (savedTrans) {
-        setTransferRecords(JSON.parse(savedTrans));
+        transData = JSON.parse(savedTrans);
+        // Si por alguna razón el array está vacío o le falta algún turno, lo re-inicializamos
+        if (transData.length === 0) {
+            transData = createDefaultTransferRecords();
+        } else {
+            // Aseguramos que existan registros para los 3 turnos
+            const shifts = ['MAÑANA', 'TARDE', 'NOCHE'];
+            shifts.forEach(s => {
+                if (!transData.some(t => t.shift === s)) {
+                    transData.push(createDefaultTransferRecords().find(tr => tr.shift === s)!);
+                }
+            });
+        }
     } else {
-        const defaultTrans = (['MAÑANA', 'TARDE', 'NOCHE'] as const).map(s => ({
-            id: `trans-${s}-${Date.now()}`,
-            shift: s,
-            units: Array(3).fill(null).map((_, i) => ({
-                id: `unit-${i}`,
-                driver: null,
-                domain1: '',
-                domain2: '',
-                trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
-            })) as any,
-            maquinista: null,
-            maquinistaDomain: '',
-            auxTolva1: null,
-            auxTolva2: null,
-            auxTolva3: null,
-            auxTransferencia1: null,
-            auxTransferencia2: null,
-            encargado: null,
-            balancero1: null,
-            balancero2: null,
-            lonero: null,
-            suplenciaLona: null,
-            observaciones: ''
-        }));
-        setTransferRecords(defaultTrans);
+        transData = createDefaultTransferRecords();
     }
+    setTransferRecords(transData);
     setIsLoaded(true);
   }, [selectedDate]);
 
@@ -239,6 +256,11 @@ const App: React.FC = () => {
     }
     return res;
   }, [records, shiftFilter, searchTerm, subTab, activeTab]);
+
+  // FILTRO ESPECÍFICO PARA TOLVA
+  const filteredTransferRecords = useMemo(() => {
+    return transferRecords.filter(t => shiftFilter === 'TODOS' || t.shift === shiftFilter);
+  }, [transferRecords, shiftFilter]);
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
     if (!pickerState) return;
@@ -306,7 +328,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
               <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU OPERATIVO</h1>
               <div className="flex bg-slate-100 p-1 rounded-xl border">
-                {(['MAÑANA', 'TARDE', 'NOCHE'] as const).map(s => (
+                {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
                     <button key={s} onClick={() => setShiftFilter(s)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow text-indigo-600' : 'text-slate-400'}`}>{s}</button>
                 ))}
               </div>
@@ -340,7 +362,7 @@ const App: React.FC = () => {
             {activeTab === 'parte' ? (
                 <div className="flex-1 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-full">
                     {subTab === 'TRANSFERENCIA' ? (
-                        <div className="flex-1 overflow-auto"><TransferTable data={transferRecords.filter(t => t.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} onUpdateStaff={handleUpdateStaff} /></div>
+                        <div className="flex-1 overflow-auto"><TransferTable data={filteredTransferRecords} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} onUpdateStaff={handleUpdateStaff} /></div>
                     ) : (
                         <div className="flex-1 overflow-hidden"><ReportTable data={filteredRecords} onUpdateRecord={handleUpdateRecord} onDeleteRecord={(id) => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} /></div>
                     )}

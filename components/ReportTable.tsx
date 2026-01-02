@@ -31,13 +31,14 @@ const StaffCell: React.FC<StaffCellProps> = ({
   const absenceStyle = isAbsent ? getAbsenceStyles(staff?.address || 'FALTA') : '';
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    const { key } = e;
+    if (key === 'Enter' || key === ' ') {
         e.preventDefault();
         onClick?.();
-    } else if (e.key === 'ArrowUp') onNavigate(rowIndex - 1, colIndex);
-    else if (e.key === 'ArrowDown') onNavigate(rowIndex + 1, colIndex);
-    else if (e.key === 'ArrowLeft') onNavigate(rowIndex, colIndex - 1);
-    else if (e.key === 'ArrowRight') onNavigate(rowIndex, colIndex + 1);
+    } else if (key === 'ArrowUp') { e.preventDefault(); onNavigate(rowIndex - 1, colIndex); }
+    else if (key === 'ArrowDown') { e.preventDefault(); onNavigate(rowIndex + 1, colIndex); }
+    else if (key === 'ArrowLeft') { e.preventDefault(); onNavigate(rowIndex, colIndex - 1); }
+    else if (key === 'ArrowRight') { e.preventDefault(); onNavigate(rowIndex, colIndex + 1); }
   };
 
   return (
@@ -46,7 +47,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
       data-row={rowIndex}
       data-col={colIndex}
       onKeyDown={handleKeyDown}
-      className={`border border-black p-0 min-w-[135px] h-10 transition-all relative group/cell focus:ring-2 focus:ring-indigo-500 focus:z-50 outline-none cursor-pointer ${
+      className={`border border-black p-0 min-w-[135px] h-10 transition-all relative group/cell focus:ring-2 focus:ring-indigo-500 focus:z-50 outline-none cursor-pointer select-none ${
         !staff ? (isSuplente ? 'bg-indigo-50/20' : 'bg-white') : 
         (isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-100 text-indigo-900' : 'bg-white hover:bg-slate-50')
       }`}
@@ -95,10 +96,20 @@ const StaffCell: React.FC<StaffCellProps> = ({
 export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel }) => {
   
   const focusCell = (r: number, c: number) => {
-    const el = document.querySelector(`[data-row="${r}"][data-col="${c}"] input, [data-row="${r}"][data-col="${c}"] select, [data-row="${r}"][data-col="${c}"]`) as HTMLElement;
+    // Límites de navegación
+    if (r < 0 || r >= data.length || c < 0 || c > 13) return;
+
+    const el = document.querySelector(`[data-row="${r}"][data-col="${c}"]`) as HTMLElement;
     if (el) {
         el.focus();
-        if (el instanceof HTMLInputElement) el.select();
+        const input = el.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
+        if (input) {
+            input.focus();
+            if (input instanceof HTMLInputElement) {
+                // Selecciona todo el texto para poder sobrescribir rápido
+                input.select();
+            }
+        }
     }
   };
 
@@ -108,6 +119,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
 
     if (key === 'Enter') {
         e.preventDefault();
+        // Enter confirma y baja a la siguiente fila
         focusCell(rIdx + 1, cIdx);
     } else if (key === 'ArrowUp') {
         e.preventDefault();
@@ -116,16 +128,30 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
         e.preventDefault();
         focusCell(rIdx + 1, cIdx);
     } else if (key === 'ArrowLeft') {
-        if (input.selectionStart === 0) {
+        // Solo salta a la izquierda si el cursor está al inicio
+        if (input.selectionStart === 0 && input.selectionEnd === 0) {
             e.preventDefault();
             focusCell(rIdx, cIdx - 1);
         }
     } else if (key === 'ArrowRight') {
-        if (input.selectionStart === input.value.length) {
+        // Solo salta a la derecha si el cursor está al final
+        if (input.selectionStart === input.value.length && input.selectionEnd === input.value.length) {
             e.preventDefault();
             focusCell(rIdx, cIdx + 1);
         }
+    } else if (key === 'Escape') {
+        input.blur();
+        const cell = input.closest('td');
+        if (cell) cell.focus();
     }
+  };
+
+  const handleSelectKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>, rIdx: number, cIdx: number) => {
+    if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(rIdx - 1, cIdx); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); focusCell(rIdx, cIdx - 1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); focusCell(rIdx, cIdx + 1); }
+    else if (e.key === 'Enter') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
   };
 
   return (
@@ -163,7 +189,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                     {r.zone}
                   </td>
                   
-                  {/* Interno */}
+                  {/* Interno (col 0) */}
                   <td data-row={rowIndex} data-col={0} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <input 
                       type="text" 
@@ -174,7 +200,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                     />
                   </td>
                   
-                  {/* Dominio */}
+                  {/* Dominio (col 1) */}
                   <td data-row={rowIndex} data-col={1} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <input 
                       type="text" 
@@ -195,14 +221,12 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <StaffCell staff={r.replacementAux1} role="REEMPLAZO AUXILIAR I" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.replacementAux2} role="REEMPLAZO AUXILIAR II" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
 
+                  {/* Estado (col 10) */}
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <select 
                         value={r.zoneStatus} 
                         onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)}
-                        onKeyDown={e => {
-                            if (e.key === 'ArrowUp') focusCell(rowIndex - 1, 10);
-                            else if (e.key === 'ArrowDown') focusCell(rowIndex + 1, 10);
-                        }}
+                        onKeyDown={e => handleSelectKeyDown(e, rowIndex, 10)}
                         className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}
                     >
                       <option value={ZoneStatus.PENDING}>PENDIENTE</option>
@@ -211,6 +235,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                     </select>
                   </td>
                   
+                  {/* Informe (col 11) */}
                   <td data-row={rowIndex} data-col={11} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <input 
                       type="text" 
@@ -222,6 +247,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                     />
                   </td>
                   
+                  {/* Toneladas (col 12) */}
                   <td data-row={rowIndex} data-col={12} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <input 
                       type="text" 
@@ -233,6 +259,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                     />
                   </td>
                   
+                  {/* Hora (col 13) */}
                   <td data-row={rowIndex} data-col={13} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
                     <input 
                       type="text" 

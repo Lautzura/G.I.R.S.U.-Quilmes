@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit, AbsenceReason } from './types';
+import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit, AbsenceReason, TransferTrip } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
 import { ShiftManagersTop } from './components/ShiftManagers';
@@ -152,7 +152,6 @@ const App: React.FC = () => {
                 supervisionReport: m.report || ''
             }));
         };
-
         rawRecords = [
             ...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'),
             ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'),
@@ -165,7 +164,36 @@ const App: React.FC = () => {
     setRecords(syncRecordsWithStaff(rawRecords, updatedStaffList));
 
     setShiftMetadataMap(savedMeta ? JSON.parse(savedMeta) : { 'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] }, 'TARDE': { supervisor: '', subSupervisor: '', absences: [] }, 'NOCHE': { supervisor: '', subSupervisor: '', absences: [] }, 'TODOS': { supervisor: '', subSupervisor: '', absences: [] } });
-    setTransferRecords(savedTrans ? JSON.parse(savedTrans) : []);
+    
+    if (savedTrans) {
+        setTransferRecords(JSON.parse(savedTrans));
+    } else {
+        const defaultTrans = (['MAÑANA', 'TARDE', 'NOCHE'] as const).map(s => ({
+            id: `trans-${s}-${Date.now()}`,
+            shift: s,
+            units: Array(3).fill(null).map((_, i) => ({
+                id: `unit-${i}`,
+                driver: null,
+                domain1: '',
+                domain2: '',
+                trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
+            })) as any,
+            maquinista: null,
+            maquinistaDomain: '',
+            auxTolva1: null,
+            auxTolva2: null,
+            auxTolva3: null,
+            auxTransferencia1: null,
+            auxTransferencia2: null,
+            encargado: null,
+            balancero1: null,
+            balancero2: null,
+            lonero: null,
+            suplenciaLona: null,
+            observaciones: ''
+        }));
+        setTransferRecords(defaultTrans);
+    }
     setIsLoaded(true);
   }, [selectedDate]);
 
@@ -176,7 +204,6 @@ const App: React.FC = () => {
     localStorage.setItem(`trans_v7_${selectedDate}`, JSON.stringify(transferRecords));
   }, [records, shiftMetadataMap, transferRecords, selectedDate, isLoaded]);
 
-  // FUNCIÓN PARA ACTUALIZAR DATOS EN LA TABLA
   const handleUpdateRecord = (id: string, field: keyof RouteRecord, value: any) => {
     setRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
   };
@@ -196,31 +223,16 @@ const App: React.FC = () => {
     setStaffList(newStaffList);
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
     localStorage.setItem('master_staff_v7', JSON.stringify(masterStaff.filter((s: any) => s.id !== id)));
-
     setRecords(prev => prev.map(r => {
         const check = (val: any) => (val?.id === id ? null : val);
-        return {
-            ...r,
-            driver: check(r.driver),
-            aux1: check(r.aux1),
-            aux2: check(r.aux2),
-            aux3: check(r.aux3),
-            aux4: check(r.aux4),
-            replacementDriver: check(r.replacementDriver),
-            replacementAux1: check(r.replacementAux1),
-            replacementAux2: check(r.replacementAux2),
-        };
+        return { ...r, driver: check(r.driver), aux1: check(r.aux1), aux2: check(r.aux2), aux3: check(r.aux3), aux4: check(r.aux4), replacementDriver: check(r.replacementDriver), replacementAux1: check(r.replacementAux1), replacementAux2: check(r.replacementAux2) };
     }));
   };
 
   const filteredRecords = useMemo(() => {
     let res = records.filter(r => shiftFilter === 'TODOS' || r.shift === shiftFilter);
-    if (subTab === 'GENERAL') {
-        res = res.filter(r => !r.category || r.category === 'RECOLECCIÓN' || r.category === 'AMBIENTE');
-    } else if (subTab === 'REPASO') {
-        res = res.filter(r => r.category === 'REPASO_LATERAL' || r.category === 'CARGA LATERAL');
-    }
-    
+    if (subTab === 'GENERAL') res = res.filter(r => !r.category || r.category === 'RECOLECCIÓN' || r.category === 'AMBIENTE');
+    else if (subTab === 'REPASO') res = res.filter(r => r.category === 'REPASO_LATERAL' || r.category === 'CARGA LATERAL');
     if (searchTerm && activeTab === 'parte') {
         const s = searchTerm.toLowerCase();
         res = res.filter(r => r.zone.toLowerCase().includes(s) || (r.internalId || '').toLowerCase().includes(s));
@@ -256,7 +268,6 @@ const App: React.FC = () => {
     if (!pickerState) return [];
     const search = pickerSearch.toLowerCase().trim();
     const field = pickerState.field.toLowerCase();
-    
     const filtered = staffList.filter(s => {
       const sName = (s.name || '').toLowerCase();
       const sId = (s.id || '').toLowerCase();
@@ -268,7 +279,6 @@ const App: React.FC = () => {
       if (field.includes('encargado')) return s.role === 'ENCARGADO' || s.role === 'SUPERVISOR';
       return true;
     });
-
     return filtered.sort((a, b) => {
         if (search !== '') return a.name.localeCompare(b.name);
         if (a.status === StaffStatus.PRESENT && b.status === StaffStatus.ABSENT) return -1;
@@ -281,9 +291,7 @@ const App: React.FC = () => {
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden font-['Plus_Jakarta_Sans']">
       <aside className="w-64 bg-[#111827] text-white flex flex-col shrink-0 shadow-2xl z-50">
         <div className="p-8 text-center border-b border-white/5">
-            <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-2">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Quilmes" />
-            </div>
+            <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-2"><img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Quilmes" /></div>
             <h2 className="text-xl font-black tracking-tighter">QUILMES</h2>
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em]">G.I.R.S.U.</p>
         </div>
@@ -291,11 +299,8 @@ const App: React.FC = () => {
             <SidebarItem active={activeTab === 'parte'} icon={<ClipboardList size={20} />} label="Parte Diario" onClick={() => setActiveTab('parte')} />
             <SidebarItem active={activeTab === 'personal'} icon={<Users size={20} />} label="Padrón Personal" onClick={() => setActiveTab('personal')} />
         </nav>
-        <div className="p-6">
-            <button className="w-full flex items-center justify-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-red-500/10 rounded-2xl transition-all"><LogOut size={18} /><span className="text-[10px] font-black uppercase">Salir</span></button>
-        </div>
+        <div className="p-6"><button className="w-full flex items-center justify-center gap-3 px-4 py-3 text-slate-400 hover:text-white hover:bg-red-500/10 rounded-2xl transition-all"><LogOut size={18} /><span className="text-[10px] font-black uppercase">Salir</span></button></div>
       </aside>
-
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-40 relative">
           <div className="flex items-center gap-4">
@@ -308,120 +313,61 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-3">
              <div className="flex items-center bg-slate-50 border rounded-2xl p-1 shadow-sm">
-                <button onClick={() => {
-                  const d = new Date(selectedDate + 'T12:00:00');
-                  d.setDate(d.getDate() - 1);
-                  setSelectedDate(d.toISOString().split('T')[0]);
-                }} className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronLeft size={18} /></button>
-                <div className="flex items-center gap-2 px-3">
-                  <CalendarIcon size={14} className="text-indigo-500" />
-                  <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase" />
-                </div>
-                <button onClick={() => {
-                  const d = new Date(selectedDate + 'T12:00:00');
-                  d.setDate(d.getDate() + 1);
-                  setSelectedDate(d.toISOString().split('T')[0]);
-                }} className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronRight size={18} /></button>
+                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronLeft size={18} /></button>
+                <div className="flex items-center gap-2 px-3"><CalendarIcon size={14} className="text-indigo-500" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase" /></div>
+                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 hover:bg-white hover:shadow-sm rounded-xl text-slate-400 hover:text-indigo-600 transition-all"><ChevronRight size={18} /></button>
              </div>
              {selectedDate !== today && <button onClick={() => setSelectedDate(today)} className="bg-slate-800 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg hover:bg-slate-700 transition-all"><History size={14} /> Hoy</button>}
              <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic flex items-center gap-2 shadow-lg hover:brightness-110 transition-all"><CheckCircle2 size={16} /> Cierre</button>
              <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest italic flex items-center gap-2 shadow-lg"><Plus size={16} /> Nuevo</button>
           </div>
         </header>
-
         <div className="bg-white px-6 py-2 border-b border-slate-200 flex items-center gap-4 shrink-0 z-30 shadow-sm overflow-x-auto custom-scrollbar">
             {activeTab === 'parte' ? (
-              <>
-                <div className="flex gap-1.5 shrink-0">
+              <><div className="flex gap-1.5 shrink-0">
                     <SubTabButton active={subTab === 'GENERAL'} label="RECOLECCIÓN" onClick={() => setSubTab('GENERAL')} />
                     <SubTabButton active={subTab === 'REPASO'} label="REPASO" onClick={() => setSubTab('REPASO')} />
                     <SubTabButton active={subTab === 'TRANSFERENCIA'} label="TOLVA" onClick={() => setSubTab('TRANSFERENCIA')} />
                 </div>
                 <div className="h-6 w-px bg-slate-200 mx-1 shrink-0"></div>
-                <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(f, r) => setPickerState({ type: 'meta', targetId: 'meta', field: f, role: r })} onUpdateStaff={handleUpdateStaff} />
-              </>
+                <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(f, r) => setPickerState({ type: 'meta', targetId: 'meta', field: f, role: r })} onUpdateStaff={handleUpdateStaff} /></>
             ) : (
-              <div className="flex flex-col gap-0.5 shrink-0">
-                  <h2 className="text-[12px] font-black text-slate-800 uppercase italic">Padrón de Personal</h2>
-                  <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">Gestión y control de asistencia</p>
-              </div>
+              <div className="flex flex-col gap-0.5 shrink-0"><h2 className="text-[12px] font-black text-slate-800 uppercase italic">Padrón de Personal</h2><p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest leading-none">Gestión y control de asistencia</p></div>
             )}
-            <div className="relative w-64 ml-auto shrink-0">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
-                <input type="text" placeholder={activeTab === 'parte' ? "FILTRAR RUTAS..." : "BUSCAR NOMBRE O LEGAJO..."} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all uppercase" />
-            </div>
+            <div className="relative w-64 ml-auto shrink-0"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} /><input type="text" placeholder={activeTab === 'parte' ? "FILTRAR RUTAS..." : "BUSCAR NOMBRE O LEGAJO..."} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all uppercase" /></div>
         </div>
-
         <div className="flex-1 overflow-hidden p-4 bg-[#f8fafc]">
             {activeTab === 'parte' ? (
                 <div className="flex-1 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-full">
                     {subTab === 'TRANSFERENCIA' ? (
-                        <div className="flex-1 overflow-auto">
-                          <TransferTable data={transferRecords.filter(t => t.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} onUpdateStaff={handleUpdateStaff} />
-                        </div>
+                        <div className="flex-1 overflow-auto"><TransferTable data={transferRecords.filter(t => t.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onOpenPicker={(id, field, role, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx })} onUpdateStaff={handleUpdateStaff} /></div>
                     ) : (
-                        <div className="flex-1 overflow-hidden">
-                          <ReportTable 
-                            data={filteredRecords} 
-                            onUpdateRecord={handleUpdateRecord} // AHORA SÍ PASAMOS LA FUNCIÓN
-                            onDeleteRecord={(id) => setRecords(prev => prev.filter(r => r.id !== id))} 
-                            onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} 
-                            onUpdateStaff={handleUpdateStaff} 
-                            activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} 
-                          />
-                        </div>
+                        <div className="flex-1 overflow-hidden"><ReportTable data={filteredRecords} onUpdateRecord={handleUpdateRecord} onDeleteRecord={(id) => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} /></div>
                     )}
                 </div>
             ) : (
-                <div className="h-full overflow-y-auto pr-4 custom-scrollbar">
-                  <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={handleRemoveStaff} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} />
-                </div>
+                <div className="h-full overflow-y-auto pr-4 custom-scrollbar"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={handleRemoveStaff} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} /></div>
             )}
         </div>
       </main>
-
       {pickerState && (
         <div className="fixed inset-0 z-[500] bg-[#1e1b2e]/60 backdrop-blur-md flex items-center justify-center p-0 md:p-4">
             <div className="bg-[#f8fafc] rounded-none md:rounded-[3.5rem] shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-screen md:max-h-[92vh] border border-white/20">
-                <div className="bg-[#1e1b2e] p-8 text-white flex justify-between items-center shrink-0">
-                    <h3 className="text-xl font-black uppercase tracking-[0.05em] italic">ASIGNAR {pickerState.role}</h3>
-                    <button onClick={() => { setPickerState(null); setPickerSearch(''); }} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={28} /></button>
-                </div>
+                <div className="bg-[#1e1b2e] p-8 text-white flex justify-between items-center shrink-0"><h3 className="text-xl font-black uppercase tracking-[0.05em] italic">ASIGNAR {pickerState.role}</h3><button onClick={() => { setPickerState(null); setPickerSearch(''); }} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={28} /></button></div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
                     <div className="px-8 py-6 space-y-6 shrink-0 bg-white shadow-sm">
-                        <button onClick={() => handlePickerSelection(null)} className="w-full flex items-center justify-center gap-3 py-5 bg-[#fff1f2] text-[#e11d48] border-2 border-[#fecdd3] rounded-[1.8rem] text-[11px] font-black uppercase hover:bg-[#e11d48] hover:text-white transition-all shadow-sm">
-                            <UserX size={20} /> Quitar Asignación
-                        </button>
-                        <div className="relative group">
-                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={20} />
-                            <input autoFocus type="text" placeholder="BUSCAR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-[1.8rem] text-[12px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 transition-all shadow-sm" />
-                        </div>
+                        <button onClick={() => handlePickerSelection(null)} className="w-full flex items-center justify-center gap-3 py-5 bg-[#fff1f2] text-[#e11d48] border-2 border-[#fecdd3] rounded-[1.8rem] text-[11px] font-black uppercase hover:bg-[#e11d48] hover:text-white transition-all shadow-sm"><UserX size={20} /> Quitar Asignación</button>
+                        <div className="relative group"><Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={20} /><input autoFocus type="text" placeholder="BUSCAR NOMBRE O LEGAJO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-100 rounded-[1.8rem] text-[12px] font-black uppercase outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500/30 transition-all shadow-sm" /></div>
                     </div>
                     <div className="p-8 space-y-4">
                         {filteredPickerStaff.length > 0 ? filteredPickerStaff.map((s) => (
                             <div key={s.id} className={`rounded-[2.5rem] transition-all overflow-hidden border-2 shadow-sm mb-4 bg-white border-slate-50 hover:border-indigo-100`}>
                                 <div className="p-6 flex items-center justify-between">
-                                    <div onClick={() => s.status === StaffStatus.ABSENT ? null : handlePickerSelection(s)} className={`flex items-center gap-5 cursor-pointer flex-1 ${s.status === StaffStatus.ABSENT ? 'opacity-50' : ''}`}>
-                                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black bg-slate-100 text-slate-500`}>{s.name.charAt(0)}</div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="text-[13px] font-black text-slate-800 uppercase leading-none">{s.name}</h4>
-                                                <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded-md font-black">{s.role}</span>
-                                            </div>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-2">LEGAJO: {s.id} | {s.gender}</p>
-                                        </div>
-                                    </div>
-                                    <button onClick={(e) => { e.stopPropagation(); if (s.status === StaffStatus.ABSENT) handleUpdateStaff({...s, status: StaffStatus.PRESENT, address: ''}); else setPickerState({...pickerState, expandedStaffId: pickerState.expandedStaffId === s.id ? null : s.id}); }} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 ${s.status === StaffStatus.ABSENT ? 'bg-emerald-500 text-white' : 'bg-[#ef4444] text-white'}`}>
-                                        {s.status === StaffStatus.ABSENT ? <UserCheck size={26} /> : <UserX size={26} />}
-                                    </button>
+                                    <div onClick={() => s.status === StaffStatus.ABSENT ? null : handlePickerSelection(s)} className={`flex items-center gap-5 cursor-pointer flex-1 ${s.status === StaffStatus.ABSENT ? 'opacity-50' : ''}`}><div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black bg-slate-100 text-slate-500`}>{s.name.charAt(0)}</div><div><div className="flex items-center gap-2"><h4 className="text-[13px] font-black text-slate-800 uppercase leading-none">{s.name}</h4><span className="text-[8px] px-1.5 py-0.5 bg-slate-100 text-slate-400 rounded-md font-black">{s.role}</span></div><p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.1em] mt-2">LEGAJO: {s.id} | {s.gender}</p></div></div>
+                                    <button onClick={(e) => { e.stopPropagation(); if (s.status === StaffStatus.ABSENT) handleUpdateStaff({...s, status: StaffStatus.PRESENT, address: ''}); else setPickerState({...pickerState, expandedStaffId: pickerState.expandedStaffId === s.id ? null : s.id}); }} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 ${s.status === StaffStatus.ABSENT ? 'bg-emerald-500 text-white' : 'bg-[#ef4444] text-white'}`}>{s.status === StaffStatus.ABSENT ? <UserCheck size={26} /> : <UserX size={26} />}</button>
                                 </div>
                             </div>
-                        )) : (
-                            <div className="text-center py-20 opacity-30">
-                                <Search size={64} className="mx-auto mb-4" />
-                                <p className="text-[12px] font-black uppercase italic">Sin resultados para "{pickerSearch}"</p>
-                            </div>
-                        )}
+                        )) : (<div className="text-center py-20 opacity-30"><Search size={64} className="mx-auto mb-4" /><p className="text-[12px] font-black uppercase italic">Sin resultados para "{pickerSearch}"</p></div>)}
                     </div>
                 </div>
             </div>
@@ -434,10 +380,7 @@ const App: React.FC = () => {
 };
 
 const SidebarItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void }> = ({ active, icon, label, onClick }) => (
-    <button onClick={onClick} className={`w-full flex items-center gap-5 px-6 py-4 rounded-2xl transition-all duration-300 ${active ? 'bg-[#7c3aed] text-white shadow-xl' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}>
-        <span className={active ? 'text-white' : 'text-slate-500'}>{icon}</span>
-        <span className="text-[11px] font-black uppercase tracking-widest italic">{label}</span>
-    </button>
+    <button onClick={onClick} className={`w-full flex items-center gap-5 px-6 py-4 rounded-2xl transition-all duration-300 ${active ? 'bg-[#7c3aed] text-white shadow-xl' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}><span className={active ? 'text-white' : 'text-slate-500'}>{icon}</span><span className="text-[11px] font-black uppercase tracking-widest italic">{label}</span></button>
 );
 
 const SubTabButton: React.FC<{ active: boolean, label: string, onClick: () => void }> = ({ active, label, onClick }) => (

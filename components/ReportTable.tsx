@@ -184,7 +184,17 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <StaffCell staff={r.replacementAux1} role="REEMPLAZO AUXILIAR I" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <StaffCell staff={r.replacementAux2} role="REEMPLAZO AUXILIAR II" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onUpdateStatus={(s, st) => onUpdateStaff({...s, status: st, address: st === StaffStatus.ABSENT ? AbsenceReason.ARTICULO_95 : ''})} />
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0 focus-within:ring-2 focus-within:ring-indigo-500">
-                    <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} onKeyDown={e => { if (e.key === 'ArrowUp') focusCell(rowIndex - 1, 10); else if (e.key === 'ArrowDown') focusCell(rowIndex + 1, 10); }} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
+                    <select 
+                      value={r.zoneStatus} 
+                      onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} 
+                      onKeyDown={e => { 
+                        if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(rowIndex - 1, 10); }
+                        else if (e.key === 'ArrowDown') { e.preventDefault(); focusCell(rowIndex + 1, 10); }
+                        else if (e.key === 'ArrowLeft') { e.preventDefault(); focusCell(rowIndex, 9); }
+                        else if (e.key === 'ArrowRight') { e.preventDefault(); focusCell(rowIndex, 11); }
+                      }} 
+                      className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}
+                    >
                       <option value={ZoneStatus.PENDING}>PENDIENTE</option>
                       <option value={ZoneStatus.COMPLETE}>COMPLETA</option>
                       <option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>

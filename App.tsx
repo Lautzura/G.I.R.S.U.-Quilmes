@@ -109,7 +109,6 @@ const App: React.FC = () => {
     const savedTrans = localStorage.getItem(`trans_v7_${selectedDate}`);
     const masterStaff = localStorage.getItem('master_staff_v7');
     
-    // 1. Cargar y Deduplicar Personal
     let currentStaff: StaffMember[] = [];
     if (masterStaff) {
         currentStaff = JSON.parse(masterStaff);
@@ -124,13 +123,10 @@ const App: React.FC = () => {
     const updatedStaffList = currentStaff.map(s => resolveStaffStatus(s, selectedDate));
     setStaffList(updatedStaffList);
 
-    // 2. Cargar Rutas (Si no existen, cargar Master Data para que NO esté vacío)
     let rawRecords: RouteRecord[] = [];
     if (savedData) {
         rawRecords = JSON.parse(savedData);
     } else {
-        // AUTO-POBLACIÓN SI ESTÁ VACÍO
-        // Fix: Added missing replacementDriver, replacementAux1, and replacementAux2 properties to the created RouteRecord objects.
         const createInitial = (master: any[], shift: string, category: string): RouteRecord[] => {
             return master.map((m, idx) => ({
                 id: `${m.zone}-${shift}-${Date.now()}-${idx}`,
@@ -168,7 +164,6 @@ const App: React.FC = () => {
     }
     setRecords(syncRecordsWithStaff(rawRecords, updatedStaffList));
 
-    // 3. Cargar Metadata y Transferencia
     setShiftMetadataMap(savedMeta ? JSON.parse(savedMeta) : { 'MAÑANA': { supervisor: '', subSupervisor: '', absences: [] }, 'TARDE': { supervisor: '', subSupervisor: '', absences: [] }, 'NOCHE': { supervisor: '', subSupervisor: '', absences: [] }, 'TODOS': { supervisor: '', subSupervisor: '', absences: [] } });
     setTransferRecords(savedTrans ? JSON.parse(savedTrans) : []);
     setIsLoaded(true);
@@ -180,6 +175,11 @@ const App: React.FC = () => {
     localStorage.setItem(`meta_v7_${selectedDate}`, JSON.stringify(shiftMetadataMap));
     localStorage.setItem(`trans_v7_${selectedDate}`, JSON.stringify(transferRecords));
   }, [records, shiftMetadataMap, transferRecords, selectedDate, isLoaded]);
+
+  // FUNCIÓN PARA ACTUALIZAR DATOS EN LA TABLA
+  const handleUpdateRecord = (id: string, field: keyof RouteRecord, value: any) => {
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  };
 
   const handleUpdateStaff = (updatedMember: StaffMember) => {
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
@@ -361,7 +361,14 @@ const App: React.FC = () => {
                         </div>
                     ) : (
                         <div className="flex-1 overflow-hidden">
-                          <ReportTable data={filteredRecords} onDeleteRecord={(id) => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} />
+                          <ReportTable 
+                            data={filteredRecords} 
+                            onUpdateRecord={handleUpdateRecord} // AHORA SÍ PASAMOS LA FUNCIÓN
+                            onDeleteRecord={(id) => setRecords(prev => prev.filter(r => r.id !== id))} 
+                            onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} 
+                            onUpdateStaff={handleUpdateStaff} 
+                            activeShiftLabel={`PARTE DIARIO - TURNO ${shiftFilter}`} 
+                          />
                         </div>
                     )}
                 </div>

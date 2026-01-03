@@ -225,17 +225,22 @@ const App: React.FC = () => {
     const cleanId = String(id).trim();
     if (!cleanId) return;
 
-    // 1. Limpiar de localStorage
+    // 1. Borrar de la base maestra permanente
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
     const updatedMaster = masterStaff.filter((s: any) => String(s.id).trim() !== cleanId);
     localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
     
-    // 2. Actualizar estado y sincronizar tablas en un solo paso
+    // 2. Borrar del estado actual y actualizar las rutas del día
     setStaffList(prev => {
-        const next = prev.filter(s => String(s.id).trim() !== cleanId);
-        // Sincronizamos los records con la lista de personal YA FILTRADA
-        setRecords(oldRecords => syncRecordsWithStaff(oldRecords, next));
-        return next;
+        const nextList = prev.filter(s => String(s.id).trim() !== cleanId);
+        // Usamos una función de actualización funcional para records para asegurar sincronía
+        setRecords(prevRecords => {
+            const nextRecords = syncRecordsWithStaff(prevRecords, nextList);
+            // Guardar inmediatamente el cambio en las rutas
+            localStorage.setItem(`girsu_v7_${selectedDate}`, JSON.stringify(nextRecords));
+            return nextRecords;
+        });
+        return nextList;
     });
   };
 

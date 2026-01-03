@@ -188,6 +188,26 @@ const App: React.FC = () => {
     setRecords(prev => syncRecordsWithStaff(prev, newStaffList));
   };
 
+  const handleRemoveStaff = (id: string) => {
+    const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
+    const updatedMaster = masterStaff.filter((s: StaffMember) => s.id !== id);
+    localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
+    
+    const newStaffList = staffList.filter(s => s.id !== id);
+    setStaffList(newStaffList);
+    setRecords(prev => syncRecordsWithStaff(prev, newStaffList));
+  };
+
+  const handleUpdateRecord = (id: string, field: keyof RouteRecord, value: any) => {
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
+  };
+
+  const handleDeleteRecord = (id: string) => {
+    if (window.confirm('¿Eliminar esta ruta del parte?')) {
+      setRecords(prev => prev.filter(r => r.id !== id));
+    }
+  };
+
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
     if (!pickerState) return;
     if (pickerState.type === 'route') {
@@ -299,13 +319,13 @@ const App: React.FC = () => {
                             {subTab === 'TRANSFERENCIA' ? (
                                 <div className="flex-1 overflow-auto"><TransferTable data={[]} onUpdateRow={() => {}} onOpenPicker={() => {}} onUpdateStaff={handleUpdateStaff} /></div>
                             ) : (
-                                <div className="flex-1 overflow-hidden"><ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={() => {}} onDeleteRecord={() => {}} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`TURNO ${shiftFilter}`} /></div>
+                                <div className="flex-1 overflow-hidden"><ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={handleUpdateRecord} onDeleteRecord={handleDeleteRecord} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`TURNO ${shiftFilter}`} /></div>
                             )}
                         </div>
                     </div>
                 </div>
             ) : (
-                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={() => {}} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
+                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={handleRemoveStaff} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
             )}
         </div>
       </main>

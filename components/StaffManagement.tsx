@@ -1,14 +1,16 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from '../types';
-import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon } from 'lucide-react';
+import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../App';
+import * as XLSX from 'xlsx';
 
 interface StaffManagementProps {
   staffList: StaffMember[];
   onAddStaff: (member: StaffMember) => void;
+  onBulkAddStaff?: (newStaff: StaffMember[]) => void;
   onRemoveStaff: (id: string) => void;
   onUpdateStaff: (member: StaffMember, originalId?: string) => void;
   records: RouteRecord[];
@@ -19,17 +21,105 @@ interface StaffManagementProps {
 
 type SortKey = 'name' | 'id' | 'role';
 
-export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, selectedShift, records, searchTerm, onSearchChange }) => {
+export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, onBulkAddStaff, selectedShift, records, searchTerm, onSearchChange }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleSort = (key: SortKey) => {
     setSortConfig(prev => ({
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
     }));
+  };
+
+  const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const reader = new FileReader();
+    
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
+
+        if (rows.length === 0) {
+            alert('El archivo está vacío.');
+            setIsImporting(false);
+            return;
+        }
+
+        let headerIdx = -1;
+        let legajoCol = -1;
+        let apellidoCol = -1;
+        let nombresCol = -1;
+
+        // Búsqueda profunda de encabezados
+        for (let i = 0; i < Math.min(rows.length, 30); i++) {
+            const row = rows[i].map(c => String(c).trim().toUpperCase());
+            const lIdx = row.findIndex(c => c === 'LEGAJO' || c === 'LEGA');
+            if (lIdx !== -1) {
+                headerIdx = i;
+                legajoCol = lIdx;
+                apellidoCol = row.findIndex(c => c.includes('APELLIDO'));
+                nombresCol = row.findIndex(c => c.includes('NOMBRE'));
+                break;
+            }
+        }
+
+        if (headerIdx === -1 || legajoCol === -1) {
+            alert('No se detectaron los encabezados "LEGAJO", "APELLIDO" y "NOMBRES". Verifique que el Excel tenga estos nombres en la primera fila de datos.');
+            setIsImporting(false);
+            return;
+        }
+
+        const newStaff: StaffMember[] = [];
+        const dataRows = rows.slice(headerIdx + 1);
+
+        dataRows.forEach((row) => {
+            const id = String(row[legajoCol] || '').trim();
+            const apellido = String(row[apellidoCol] || '').trim();
+            const nombres = String(row[nombresCol] || '').trim();
+
+            if (id && (apellido || nombres)) {
+                const fullName = `${apellido} ${nombres}`.trim().toUpperCase();
+                newStaff.push({
+                    id: id,
+                    name: fullName,
+                    status: StaffStatus.PRESENT,
+                    role: 'AUXILIAR',
+                    gender: 'MASCULINO',
+                    preferredShift: 'MAÑANA',
+                    assignedZone: 'BASE'
+                });
+            }
+        });
+
+        if (newStaff.length > 0 && onBulkAddStaff) {
+            onBulkAddStaff(newStaff);
+            alert(`¡Carga terminada! Se procesaron ${newStaff.length} colaboradores.`);
+        } else {
+            alert('No se encontraron registros válidos debajo de los encabezados.');
+        }
+
+      } catch (err) {
+        alert('Error al procesar el Excel. Asegúrese de que el formato sea correcto.');
+        console.error(err);
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   const shiftStaff = useMemo(() => {
@@ -142,11 +232,14 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                         {staffInReason.map(s => (
                             <div key={s.id} className="bg-white p-3 rounded-xl border border-slate-200 flex items-center gap-3 shadow-sm group hover:border-indigo-300 transition-all">
                                 <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black">{s.name.charAt(0)}</div>
-                                <div className="overflow-hidden">
+                                <div className="overflow-hidden flex-1">
                                     <p className="text-[10px] font-black text-slate-800 uppercase truncate">{s.name}</p>
                                     <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">LEG: {s.id}</p>
                                 </div>
-                                <button onClick={() => setEditingStaff(s)} className="ml-auto p-1.5 text-slate-300 hover:text-indigo-600 transition-colors opacity-0 group-hover:opacity-100"><Edit3 size={14} /></button>
+                                <div className="flex items-center gap-1">
+                                  <button onClick={() => setEditingStaff(s)} className="p-1.5 text-slate-300 hover:text-indigo-600 transition-colors"><Edit3 size={14} /></button>
+                                  <button onClick={() => { if(window.confirm(`¿Eliminar a ${s.name}?`)) onRemoveStaff(String(s.id)); }} className="p-1.5 text-red-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -163,7 +256,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                 <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">PADRÓN GENERAL</h2>
             </div>
             
-            {/* BUSCADOR INTEGRADO */}
             <div className="relative w-full lg:w-80 group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
                 <input 
@@ -183,12 +275,29 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             </div>
         </div>
 
-        <button 
-          onClick={() => setIsAddModalOpen(true)} 
-          className="flex items-center gap-3 px-10 py-5 bg-[#5850ec] text-white rounded-[2rem] text-[11px] font-black uppercase shadow-2xl shadow-indigo-200 hover:brightness-110 transition-all active:scale-95 shrink-0"
-        >
-          <UserPlus size={18} /> NUEVO INGRESO
-        </button>
+        <div className="flex items-center gap-3 w-full xl:w-auto">
+            <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleExcelImport} 
+                className="hidden" 
+                accept=".xlsx, .xls" 
+            />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+              className="flex-1 xl:flex-none flex items-center justify-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-[2rem] text-[11px] font-black uppercase shadow-xl shadow-emerald-200 hover:brightness-110 transition-all active:scale-95"
+            >
+              {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />}
+              IMPORTAR EXCEL
+            </button>
+            <button 
+              onClick={() => setIsAddModalOpen(true)} 
+              className="flex-1 xl:flex-none flex items-center justify-center gap-3 px-10 py-5 bg-[#5850ec] text-white rounded-[2rem] text-[11px] font-black uppercase shadow-2xl shadow-indigo-200 hover:brightness-110 transition-all active:scale-95"
+            >
+              <UserPlus size={18} /> NUEVO INGRESO
+            </button>
+        </div>
       </div>
 
       {/* TABLA DE PERSONAL */}
@@ -234,9 +343,26 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                     </div>
                   </td>
                   <td className="pr-12 text-right">
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                      <button onClick={() => setEditingStaff(s)} className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"><Edit3 size={18} /></button>
-                      <button onClick={() => { if(window.confirm(`¿Eliminar a ${s.name} del padrón?`)) onRemoveStaff(s.id); }} className="p-3 text-red-400 hover:bg-red-50 rounded-2xl transition-all shadow-sm border border-red-50"><Trash2 size={18} /></button>
+                    <div className="flex justify-end gap-3">
+                      <button 
+                        onClick={() => setEditingStaff(s)} 
+                        className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"
+                        title="Editar"
+                      >
+                        <Edit3 size={18} />
+                      </button>
+                      <button 
+                        onClick={(e) => { 
+                          e.stopPropagation();
+                          if(window.confirm(`¿Estás seguro de eliminar a ${s.name} del padrón permanentemente?`)) {
+                            onRemoveStaff(String(s.id)); 
+                          }
+                        }} 
+                        className="p-3 text-red-500 hover:bg-red-50 rounded-2xl transition-all shadow-md border border-red-200"
+                        title="Eliminar permanentemente"
+                      >
+                        <Trash2 size={18} />
+                      </button>
                     </div>
                   </td>
                 </tr>

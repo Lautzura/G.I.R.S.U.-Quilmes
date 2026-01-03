@@ -345,6 +345,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                   <td className="pr-12 text-right">
                     <div className="flex justify-end gap-3">
                       <button 
+                        type="button"
                         onClick={() => setEditingStaff(s)} 
                         className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"
                         title="Editar"
@@ -352,10 +353,10 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                         <Edit3 size={18} />
                       </button>
                       <button 
-                        onClick={(e) => { 
-                          e.stopPropagation();
+                        type="button"
+                        onClick={() => { 
                           if(window.confirm(`¿Estás seguro de eliminar a ${s.name} del padrón permanentemente?`)) {
-                            onRemoveStaff(String(s.id)); 
+                            onRemoveStaff(String(s.id).trim()); 
                           }
                         }} 
                         className="p-3 text-red-500 hover:bg-red-50 rounded-2xl transition-all shadow-md border border-red-200"

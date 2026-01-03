@@ -36,7 +36,8 @@ import {
     ChevronDown,
     UserRound,
     Clock,
-    Zap
+    Zap,
+    PlusCircle
 } from 'lucide-react';
 
 export const getAbsenceStyles = (reason: string) => {
@@ -73,7 +74,7 @@ const syncRecordsWithStaff = (rawRecords: RouteRecord[], currentStaff: StaffMemb
         const findS = (m: any) => {
             if (!m) return null;
             const id = typeof m === 'string' ? m : m.id;
-            return currentStaff.find(s => s.id === id) || null;
+            return currentStaff.find(s => String(s.id).trim() === String(id).trim()) || null;
         };
         return { 
           ...r, 
@@ -119,7 +120,7 @@ const App: React.FC = () => {
     } else {
         const uniqueMap = new Map();
         EXTRA_STAFF.forEach(s => {
-            if (!uniqueMap.has(s.id)) uniqueMap.set(s.id, { ...s, gender: s.gender || 'MASCULINO' });
+            if (!uniqueMap.has(String(s.id))) uniqueMap.set(String(s.id), { ...s, gender: s.gender || 'MASCULINO' });
         });
         currentStaff = Array.from(uniqueMap.values());
         localStorage.setItem('master_staff_v7', JSON.stringify(currentStaff));
@@ -177,25 +178,65 @@ const App: React.FC = () => {
   }, [records, shiftMetadataMap, selectedDate, isLoaded]);
 
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
-    const idToFind = originalId || updatedMember.id;
+    const idToFind = (originalId || updatedMember.id).trim();
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
-    const updatedMaster = masterStaff.map((s: StaffMember) => s.id === idToFind ? updatedMember : s);
+    const updatedMaster = masterStaff.map((s: StaffMember) => String(s.id).trim() === idToFind ? updatedMember : s);
     localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
     
     const resolved = resolveStaffStatus(updatedMember, selectedDate);
-    const newStaffList = staffList.map(s => s.id === idToFind ? resolved : s);
+    const newStaffList = staffList.map(s => String(s.id).trim() === idToFind ? resolved : s);
     setStaffList(newStaffList);
     setRecords(prev => syncRecordsWithStaff(prev, newStaffList));
   };
 
-  const handleRemoveStaff = (id: string) => {
+  const handleAddStaff = (member: StaffMember) => {
     const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
-    const updatedMaster = masterStaff.filter((s: StaffMember) => s.id !== id);
+    const updatedMaster = [...masterStaff, member];
     localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
     
-    const newStaffList = staffList.filter(s => s.id !== id);
-    setStaffList(newStaffList);
-    setRecords(prev => syncRecordsWithStaff(prev, newStaffList));
+    const resolved = resolveStaffStatus(member, selectedDate);
+    setStaffList(prev => [...prev, resolved]);
+  };
+
+  const handleBulkAddStaff = (newStaff: StaffMember[]) => {
+    const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
+    const existingIds = new Set(masterStaff.map((s: any) => String(s.id).trim()));
+    const existingNames = new Set(masterStaff.map((s: any) => String(s.name).trim().toUpperCase()));
+
+    const filteredNewStaff = newStaff.filter(s => 
+        !existingIds.has(String(s.id).trim()) && 
+        !existingNames.has(String(s.name).trim().toUpperCase())
+    );
+    
+    if (filteredNewStaff.length > 0) {
+        const updatedMaster = [...masterStaff, ...filteredNewStaff];
+        localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
+
+        const resolvedNew = filteredNewStaff.map(s => resolveStaffStatus(s, selectedDate));
+        setStaffList(prev => {
+            const next = [...prev, ...resolvedNew];
+            setTimeout(() => setRecords(oldRecords => syncRecordsWithStaff(oldRecords, next)), 0);
+            return next;
+        });
+    }
+  };
+
+  const handleRemoveStaff = (id: string) => {
+    const cleanId = String(id).trim();
+    if (!cleanId) return;
+
+    // 1. Limpiar de localStorage
+    const masterStaff = JSON.parse(localStorage.getItem('master_staff_v7') || '[]');
+    const updatedMaster = masterStaff.filter((s: any) => String(s.id).trim() !== cleanId);
+    localStorage.setItem('master_staff_v7', JSON.stringify(updatedMaster));
+    
+    // 2. Actualizar estado y sincronizar tablas en un solo paso
+    setStaffList(prev => {
+        const next = prev.filter(s => String(s.id).trim() !== cleanId);
+        // Sincronizamos los records con la lista de personal YA FILTRADA
+        setRecords(oldRecords => syncRecordsWithStaff(oldRecords, next));
+        return next;
+    });
   };
 
   const handleUpdateRecord = (id: string, field: keyof RouteRecord, value: any) => {
@@ -206,6 +247,33 @@ const App: React.FC = () => {
     if (window.confirm('¿Eliminar esta ruta del parte?')) {
       setRecords(prev => prev.filter(r => r.id !== id));
     }
+  };
+
+  const handleAddNewRoute = (zone: string, shift: string) => {
+    const newRecord: RouteRecord = {
+        id: `NEW-${Date.now()}`,
+        zone: zone.toUpperCase(),
+        internalId: '',
+        domain: '',
+        reinforcement: 'EXTRA',
+        shift: shift as any,
+        departureTime: '',
+        dumpTime: '',
+        tonnage: '',
+        category: subTab === 'REPASO' ? 'REPASO_LATERAL' : 'RECOLECCIÓN',
+        zoneStatus: ZoneStatus.PENDING,
+        order: records.length,
+        driver: null,
+        aux1: null,
+        aux2: null,
+        aux3: null,
+        aux4: null,
+        replacementDriver: null,
+        replacementAux1: null,
+        replacementAux2: null,
+        supervisionReport: ''
+    };
+    setRecords(prev => [...prev, newRecord]);
   };
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
@@ -231,12 +299,12 @@ const App: React.FC = () => {
     let currentlyAssignedId = '';
     if (pickerState.type === 'route') {
         const route = records.find(r => r.id === pickerState.targetId);
-        currentlyAssignedId = (route as any)?.[pickerState.field]?.id || '';
+        currentlyAssignedId = String((route as any)?.[pickerState.field]?.id || '');
     } else if (pickerState.type === 'meta') {
         const currentShift = shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter;
         const metaName = shiftMetadataMap[currentShift]?.[pickerState.field as keyof ShiftMetadata];
         if (typeof metaName === 'string') {
-            currentlyAssignedId = staffList.find(s => s.name === metaName)?.id || '';
+            currentlyAssignedId = String(staffList.find(s => s.name === metaName)?.id || '');
         }
     }
 
@@ -253,8 +321,8 @@ const App: React.FC = () => {
     });
 
     return filtered.sort((a, b) => {
-        if (a.id === currentlyAssignedId) return -1;
-        if (b.id === currentlyAssignedId) return 1;
+        if (String(a.id) === currentlyAssignedId) return -1;
+        if (String(b.id) === currentlyAssignedId) return 1;
         if (search !== '') return a.name.localeCompare(b.name);
         if (a.status === StaffStatus.PRESENT && b.status === StaffStatus.ABSENT) return -1;
         if (a.status === StaffStatus.ABSENT && b.status === StaffStatus.PRESENT) return 1;
@@ -312,7 +380,19 @@ const App: React.FC = () => {
                         </div>
                         <div className="h-6 w-px bg-slate-200 mx-1 shrink-0"></div>
                         <ShiftManagersTop shift={shiftFilter} data={shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(f, r) => setPickerState({ type: 'meta', targetId: 'meta', field: f, role: r })} onUpdateStaff={handleUpdateStaff} />
-                        <div className="relative w-64 ml-auto"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} /><input type="text" placeholder="FILTRAR..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white uppercase" /></div>
+                        
+                        <div className="flex items-center gap-3 ml-auto">
+                            <button 
+                                onClick={() => setIsNewRouteModalOpen(true)}
+                                className="flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase shadow-xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-[1.02] active:scale-95 transition-all"
+                            >
+                                <PlusCircle size={16} /> Nueva Ruta
+                            </button>
+                            <div className="relative w-48">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                                <input type="text" placeholder="FILTRAR..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/5 transition-all uppercase" />
+                            </div>
+                        </div>
                     </div>
                     <div className="flex-1 p-4 overflow-hidden">
                         <div className="h-full bg-white rounded-2xl shadow-2xl border overflow-hidden flex flex-col">
@@ -325,12 +405,12 @@ const App: React.FC = () => {
                     </div>
                 </div>
             ) : (
-                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(m) => setStaffList([...staffList, m])} onRemoveStaff={handleRemoveStaff} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
+                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={handleAddStaff} onBulkAddStaff={handleBulkAddStaff} onRemoveStaff={handleRemoveStaff} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
             )}
         </div>
       </main>
 
-      {/* PICKER MODAL */}
+      {/* MODALES */}
       {pickerState && (
         <div className="fixed inset-0 z-[500] bg-[#1e1b2e]/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-[#f8fafc] rounded-[3.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh] border border-white/20">
@@ -354,10 +434,9 @@ const App: React.FC = () => {
                     <div className="p-8 space-y-4">
                         {filteredPickerStaff.map((s) => {
                             const isAbsent = s.status === StaffStatus.ABSENT;
-                            const isCurrentlyAssigned = s.id === (
-                                pickerState.type === 'route' ? (records.find(r => r.id === pickerState.targetId) as any)?.[pickerState.field]?.id : staffList.find(sl => sl.name === (shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter] as any)?.[pickerState.field])?.id
-                            );
-                            const isPickingAbsence = absencePickerId === s.id;
+                            const currentAssignedId = pickerState.type === 'route' ? String((records.find(r => r.id === pickerState.targetId) as any)?.[pickerState.field]?.id || '') : String(staffList.find(sl => sl.name === (shiftMetadataMap[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter] as any)?.[pickerState.field])?.id || '');
+                            const isCurrentlyAssigned = String(s.id).trim() === currentAssignedId.trim();
+                            const isPickingAbsence = absencePickerId === String(s.id);
                             const absenceStyle = isAbsent ? getAbsenceStyles(s.address || 'FALTA') : '';
                             
                             return (
@@ -375,7 +454,7 @@ const App: React.FC = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <button onClick={(e) => { e.stopPropagation(); isAbsent ? handleUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined }) : setAbsencePickerId(s.id); }} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 ${isAbsent ? 'bg-emerald-500 text-white' : 'bg-[#ef4444] text-white'}`}>
+                                                <button onClick={(e) => { e.stopPropagation(); isAbsent ? handleUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined }) : setAbsencePickerId(String(s.id)); }} className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 ${isAbsent ? 'bg-emerald-500 text-white' : 'bg-[#ef4444] text-white'}`}>
                                                     {isAbsent ? <UserCheck size={26} /> : <UserX size={26} />}
                                                 </button>
                                                 {!isPickingAbsence && !isCurrentlyAssigned && (
@@ -406,6 +485,7 @@ const App: React.FC = () => {
         </div>
       )}
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
+      <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={handleAddNewRoute} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
     </div>
   );
 };

@@ -192,33 +192,34 @@ const App: React.FC = () => {
               )}
           </div>
           
-          <div className="flex items-center gap-2 relative z-[100]">
+          <div className="flex items-center gap-3 relative z-[100]">
              {activeTab !== 'adn' && (
-                <div className="flex items-center border rounded-full px-2 py-1 bg-white border-slate-200 shadow-sm mr-2">
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={16} /></button>
-                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase cursor-pointer px-2 w-28 text-center" />
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={16} /></button>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center border rounded-full px-2 py-1 bg-white border-slate-200 shadow-sm">
+                        <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={16} /></button>
+                        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase cursor-pointer px-2 w-28 text-center" />
+                        <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={16} /></button>
+                    </div>
+                    {/* Botón ADN al lado de la fecha */}
+                    <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all active:scale-95" title="Configurar ADN Maestro"><Database size={18} /></button>
                 </div>
              )}
              
              {activeTab === 'adn' ? (
                  <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl h-11 transition-all hover:scale-105 hover:bg-emerald-700"><CheckCircle size={18} /> Guardar ADN</button>
              ) : (
-                <>
-                    {/* Botón ADN al lado de la fecha */}
-                    <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all active:scale-95" title="ADN Maestro"><Database size={18} /></button>
-                    
+                <div className="flex items-center gap-2">
                     {/* Botón Nueva Ruta */}
-                    <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md hover:bg-indigo-700 transition-all active:scale-95" title="Nueva Ruta"><Plus size={18} /></button>
+                    <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md hover:bg-indigo-700 transition-all active:scale-95" title="Añadir Nueva Ruta"><Plus size={18} /></button>
 
                     {/* Botón Cargar ADN (Varita) */}
-                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md hover:bg-slate-900 transition-all active:scale-95" title="Cargar ADN"><Wand2 size={18} /></button>
+                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md hover:bg-slate-900 transition-all active:scale-95" title="Cargar Datos ADN"><Wand2 size={18} /></button>
                     
                     {/* Botón Cierre (Tilde) */}
-                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md hover:bg-emerald-700 transition-all active:scale-95" title="Cierre de Turno"><CheckCircle2 size={18} /></button>
+                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md hover:bg-emerald-700 transition-all active:scale-95" title="Cerrar Turno / Reporte"><CheckCircle2 size={18} /></button>
 
                     {!isToday && <button onClick={() => setSelectedDate(today)} className="bg-slate-100 text-slate-400 p-3 rounded-2xl shadow-sm hover:text-indigo-600 transition-all"><RotateCcw size={18} /></button>}
-                </>
+                </div>
              )}
           </div>
         </header>

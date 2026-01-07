@@ -33,17 +33,17 @@ import {
     CheckCircle,
     Layout,
     ChevronDown,
-    Wand2,
-    FilterX
+    Wand2
 } from 'lucide-react';
 
 const DATA_KEY_PREFIX = 'girsu_diario_v15_';
 const TRANS_KEY_PREFIX = 'girsu_transfer_v15_';
+const MANAGERS_KEY_PREFIX = 'girsu_managers_v15_';
 const STAFF_STORAGE_KEY = 'master_staff_v15';
 const TEMPLATE_ROUTES_KEY = 'girsu_template_routes_v15';
 const TEMPLATE_TRANS_KEY = 'girsu_template_trans_v15';
+const TEMPLATE_MANAGERS_KEY = 'girsu_template_managers_v15';
 
-// COLORES DE ALTO CONTRASTE (SUPER OSCUROS PARA TEXTO BLANCO)
 export const getAbsenceStyles = (reason: string) => {
     const r = reason?.toUpperCase() || '';
     if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) return 'bg-red-900 text-white border-red-950 shadow-md font-black';
@@ -71,26 +71,31 @@ const REASON_COLORS: Record<string, string> = {
 };
 
 const resolveStaffStatus = (member: StaffMember, dateStr: string): StaffMember => {
-    if (!member.absenceStartDate) return { ...member, status: StaffStatus.PRESENT, address: '' };
+    if (!member || !member.absenceStartDate) return { ...member, status: member?.status || StaffStatus.PRESENT, address: member?.address || '' };
     
-    const current = new Date(dateStr + 'T12:00:00').getTime();
-    const start = new Date(member.absenceStartDate + 'T12:00:00').getTime();
-    
-    let shouldBeAbsent = false;
-    if (member.isIndefiniteAbsence) {
-        shouldBeAbsent = current >= start;
-    } else if (member.absenceReturnDate) {
-        const end = new Date(member.absenceReturnDate + 'T12:00:00').getTime();
-        shouldBeAbsent = current >= start && current <= end;
-    } else {
-        shouldBeAbsent = dateStr === member.absenceStartDate;
+    try {
+        const current = new Date(dateStr + 'T12:00:00').getTime();
+        const start = new Date(member.absenceStartDate + 'T12:00:00').getTime();
+        
+        let shouldBeAbsent = false;
+        if (member.isIndefiniteAbsence) {
+            shouldBeAbsent = current >= start;
+        } else if (member.absenceReturnDate) {
+            const end = new Date(member.absenceReturnDate + 'T12:00:00').getTime();
+            shouldBeAbsent = current >= start && current <= end;
+        } else {
+            shouldBeAbsent = dateStr === member.absenceStartDate;
+        }
+        
+        if (shouldBeAbsent) return { ...member, status: StaffStatus.ABSENT };
+        return { ...member, status: StaffStatus.PRESENT, address: '' };
+    } catch (e) {
+        return { ...member, status: StaffStatus.PRESENT, address: '' };
     }
-    
-    if (shouldBeAbsent) return { ...member, status: StaffStatus.ABSENT };
-    return { ...member, status: StaffStatus.PRESENT, address: '' };
 };
 
 const syncStaffInObject = (obj: any, idToFind: string, updatedStaff: StaffMember | null) => {
+    if (!obj) return obj;
     const newObj = { ...obj };
     const fields = ['driver', 'aux1', 'aux2', 'aux3', 'aux4', 'replacementDriver', 'replacementAux1', 'replacementAux2', 'maquinista', 'encargado', 'balancero1', 'auxTolva1', 'auxTolva2'];
     fields.forEach(field => {
@@ -109,10 +114,15 @@ const App: React.FC = () => {
   const [records, setRecords] = useState<RouteRecord[]>([]);
   const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [shiftManagers, setShiftManagers] = useState<Record<string, ShiftMetadata>>({
+    MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
+    TARDE: { supervisor: '', subSupervisor: '', absences: [] },
+    NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
+  });
   const [shiftFilter, setShiftFilter] = useState<'MAÑANA' | 'TARDE' | 'NOCHE' | 'TODOS'>('MAÑANA');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
-  const [pickerState, setPickerState] = useState<{ type: 'route' | 'transfer', targetId: string, field: string, role: string, unitIdx?: number } | null>(null);
+  const [pickerState, setPickerState] = useState<{ type: 'route' | 'transfer' | 'managers', targetId: string, field: string, role: string, unitIdx?: number } | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
   const [absencePickerId, setAbsencePickerId] = useState<string | null>(null);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
@@ -124,79 +134,82 @@ const App: React.FC = () => {
 
   useEffect(() => {
     setIsLoaded(false);
-    const dateKey = `${DATA_KEY_PREFIX}${selectedDate}`;
-    const transKey = `${TRANS_KEY_PREFIX}${selectedDate}`;
-    
-    let currentStaff: StaffMember[] = [];
-    const masterStaffRaw = localStorage.getItem(STAFF_STORAGE_KEY);
-    
-    if (masterStaffRaw) {
-        currentStaff = JSON.parse(masterStaffRaw);
-    } else {
-        currentStaff = EXTRA_STAFF;
-    }
+    try {
+        const dateKey = `${DATA_KEY_PREFIX}${selectedDate}`;
+        const transKey = `${TRANS_KEY_PREFIX}${selectedDate}`;
+        const managersKey = `${MANAGERS_KEY_PREFIX}${selectedDate}`;
+        
+        let currentStaff: StaffMember[] = [];
+        const masterStaffRaw = localStorage.getItem(STAFF_STORAGE_KEY);
+        if (masterStaffRaw) currentStaff = JSON.parse(masterStaffRaw);
+        else currentStaff = EXTRA_STAFF;
 
-    const uniqueStaff = Array.from(new Map(currentStaff.map(s => [String(s.id).trim(), s])).values());
-    const resolvedStaff = uniqueStaff.map(s => resolveStaffStatus(s, selectedDate));
-    setStaffList(resolvedStaff);
+        const uniqueStaff = Array.from(new Map(currentStaff.map(s => [String(s.id).trim(), s])).values());
+        const resolvedStaff = uniqueStaff.map(s => resolveStaffStatus(s, selectedDate));
+        setStaffList(resolvedStaff);
 
-    const findS = (m: any) => {
-        if (!m) return null;
-        const idToFind = String(typeof m === 'string' ? m : m.id).trim();
-        return resolvedStaff.find(s => String(s.id).trim() === idToFind) || null;
-    };
+        const findS = (m: any) => {
+            if (!m) return null;
+            const idToFind = String(typeof m === 'string' ? m : m.id).trim();
+            return resolvedStaff.find(s => String(s.id).trim() === idToFind) || null;
+        };
 
-    const savedDayData = localStorage.getItem(dateKey);
-    let rawRoutes: any[] = [];
-    
-    if (savedDayData) {
-        rawRoutes = JSON.parse(savedDayData);
-    } else {
-        const savedTemplate = localStorage.getItem(TEMPLATE_ROUTES_KEY);
-        if (savedTemplate) {
-            rawRoutes = JSON.parse(savedTemplate);
+        const savedDayData = localStorage.getItem(dateKey);
+        let rawRoutes: any[] = [];
+        if (savedDayData) {
+            rawRoutes = JSON.parse(savedDayData);
         } else {
-            const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
-            rawRoutes = [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
+            const savedTemplate = localStorage.getItem(TEMPLATE_ROUTES_KEY);
+            if (savedTemplate) rawRoutes = JSON.parse(savedTemplate);
+            else {
+                const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
+                rawRoutes = [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
+            }
         }
-    }
+        setRecords(Array.isArray(rawRoutes) ? rawRoutes.map(r => ({ ...r, driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4), replacementDriver: findS(r.replacementDriver), replacementAux1: findS(r.replacementAux1), replacementAux2: findS(r.replacementAux2) })) : []);
 
-    setRecords(rawRoutes.map(r => ({ 
-        ...r, 
-        driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4), 
-        replacementDriver: findS(r.replacementDriver), replacementAux1: findS(r.replacementAux1), replacementAux2: findS(r.replacementAux2) 
-    })));
-
-    const savedTrans = localStorage.getItem(transKey);
-    let rawTrans: any[] = [];
-    
-    if (savedTrans) {
-        rawTrans = JSON.parse(savedTrans);
-    } else {
-        const savedTransTemplate = localStorage.getItem(TEMPLATE_TRANS_KEY);
-        if (savedTransTemplate) {
-            rawTrans = JSON.parse(savedTransTemplate);
+        const savedTrans = localStorage.getItem(transKey);
+        let rawTrans: any[] = [];
+        if (savedTrans) {
+            rawTrans = JSON.parse(savedTrans);
         } else {
-            const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}-${Date.now()}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
-            rawTrans = [createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')];
+            const savedTransTemplate = localStorage.getItem(TEMPLATE_TRANS_KEY);
+            if (savedTransTemplate) rawTrans = JSON.parse(savedTransTemplate);
+            else {
+                const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}-${Date.now()}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
+                rawTrans = [createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')];
+            }
         }
+        setTransferRecords(Array.isArray(rawTrans) ? rawTrans.map(tr => ({ ...tr, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1), auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver) })) as any })) : []);
+
+        const savedManagers = localStorage.getItem(managersKey);
+        if (savedManagers) {
+            setShiftManagers(JSON.parse(savedManagers));
+        } else {
+            const templateManagers = localStorage.getItem(TEMPLATE_MANAGERS_KEY);
+            if (templateManagers) setShiftManagers(JSON.parse(templateManagers));
+            else {
+                setShiftManagers({
+                    MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
+                    TARDE: { supervisor: '', subSupervisor: '', absences: [] },
+                    NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Error cargando datos:", e);
+    } finally {
+        setIsLoaded(true);
     }
-    
-    setTransferRecords(rawTrans.map(tr => ({
-        ...tr, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1),
-        auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2),
-        units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver) })) as any
-    })));
-    
-    setIsLoaded(true);
   }, [selectedDate]);
 
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem(`${DATA_KEY_PREFIX}${selectedDate}`, JSON.stringify(records));
     localStorage.setItem(`${TRANS_KEY_PREFIX}${selectedDate}`, JSON.stringify(transferRecords));
+    localStorage.setItem(`${MANAGERS_KEY_PREFIX}${selectedDate}`, JSON.stringify(shiftManagers));
     localStorage.setItem(STAFF_STORAGE_KEY, JSON.stringify(staffList));
-  }, [records, transferRecords, staffList, selectedDate, isLoaded]);
+  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded]);
 
   const currentlyAssignedId = useMemo(() => {
     if (!pickerState) return null;
@@ -204,7 +217,7 @@ const App: React.FC = () => {
       const record = records.find(r => r.id === pickerState.targetId);
       const staff = record ? (record as any)[pickerState.field] : null;
       return staff ? String(staff.id).trim() : null;
-    } else {
+    } else if (pickerState.type === 'transfer') {
       const tr = transferRecords.find(t => t.id === pickerState.targetId);
       if (!tr) return null;
       if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) {
@@ -213,25 +226,20 @@ const App: React.FC = () => {
       }
       const staff = (tr as any)[pickerState.field];
       return staff ? String(staff.id).trim() : null;
+    } else if (pickerState.type === 'managers') {
+      const mgrName = (shiftManagers[pickerState.targetId] as any)[pickerState.field];
+      const staff = staffList.find(s => s.name === mgrName);
+      return staff ? String(staff.id).trim() : null;
     }
-  }, [pickerState, records, transferRecords]);
+    return null;
+  }, [pickerState, records, transferRecords, shiftManagers, staffList]);
 
   const filteredPickerStaff = useMemo(() => {
     if (!pickerState) return [];
     const term = pickerSearch.toLowerCase().trim();
-    if (!term) {
-        return [...staffList].sort((a, b) => {
-            const currentId = String(currentlyAssignedId || '').trim();
-            if (String(a.id).trim() === currentId) return -1;
-            if (String(b.id).trim() === currentId) return 1;
-            return a.name.localeCompare(b.name);
-        });
-    }
-    return staffList.filter(s => {
-        const nameMatch = s.name.toLowerCase().includes(term);
-        const legajoMatch = String(s.id).toLowerCase().includes(term);
-        return nameMatch || legajoMatch;
-    }).sort((a, b) => {
+    let list = [...staffList];
+    if (term) list = list.filter(s => s.name.toLowerCase().includes(term) || String(s.id).toLowerCase().includes(term));
+    return list.sort((a, b) => {
         const currentId = String(currentlyAssignedId || '').trim();
         if (String(a.id).trim() === currentId) return -1;
         if (String(b.id).trim() === currentId) return 1;
@@ -246,7 +254,9 @@ const App: React.FC = () => {
     setRecords(prev => prev.map(r => syncStaffInObject(r, idToFind, resolved)));
     setTransferRecords(prev => prev.map(tr => {
         let newTr = syncStaffInObject(tr, idToFind, resolved);
-        newTr.units = newTr.units.map((u:any) => (u.driver && String(u.driver.id).trim() === idToFind) ? { ...u, driver: resolved } : u);
+        if (newTr && newTr.units) {
+            newTr.units = newTr.units.map((u:any) => (u.driver && String(u.driver.id).trim() === idToFind) ? { ...u, driver: resolved } : u);
+        }
         return newTr;
     }));
   };
@@ -258,13 +268,15 @@ const App: React.FC = () => {
     setRecords(prev => prev.map(r => syncStaffInObject(r, cleanId, null)));
     setTransferRecords(prev => prev.map(tr => {
         let newTr = syncStaffInObject(tr, cleanId, null);
-        newTr.units = newTr.units.map((u:any) => (u.driver && String(u.driver.id).trim() === cleanId) ? { ...u, driver: null } : u);
+        if (newTr && newTr.units) {
+            newTr.units = newTr.units.map((u:any) => (u.driver && String(u.driver.id).trim() === cleanId) ? { ...u, driver: null } : u);
+        }
         return newTr;
     }));
   };
 
   const saveCurrentAsTemplate = () => {
-    if (!window.confirm("¿GUARDAR ESTE PERSONAL ACTUAL COMO LA NUEVA PLANTILLA MAESTRA?")) return;
+    if (!window.confirm("¿GUARDAR ESTA CONFIGURACIÓN COMO PLANTILLA MAESTRA?")) return;
     
     const routesToSave = records.map(r => ({
         ...r,
@@ -292,6 +304,7 @@ const App: React.FC = () => {
 
     localStorage.setItem(TEMPLATE_ROUTES_KEY, JSON.stringify(routesToSave));
     localStorage.setItem(TEMPLATE_TRANS_KEY, JSON.stringify(transToSave));   
+    localStorage.setItem(TEMPLATE_MANAGERS_KEY, JSON.stringify(shiftManagers));
 
     setShowTemplateMenu(false);
     setSaveFeedback(true);
@@ -301,52 +314,59 @@ const App: React.FC = () => {
   const applyTemplate = () => {
     const savedTemplate = localStorage.getItem(TEMPLATE_ROUTES_KEY);
     const savedTransTemplate = localStorage.getItem(TEMPLATE_TRANS_KEY);
+    const savedMgrTemplate = localStorage.getItem(TEMPLATE_MANAGERS_KEY);
 
     if (!savedTemplate) {
         alert("Primero debes guardar una plantilla");
         return;
     }
 
-    if (!window.confirm("¿RESTABLECER TODO EL PERSONAL DESDE LA PLANTILLA MAESTRA? (Se perderán cambios manuales de hoy)")) return;
+    if (!window.confirm("¿RESTABLECER TODO EL PERSONAL DESDE LA PLANTILLA MAESTRA?")) return;
 
-    const routesTemplate = JSON.parse(savedTemplate);
-    const transTemplate = savedTransTemplate ? JSON.parse(savedTransTemplate) : [];
+    try {
+        const routesTemplate = JSON.parse(savedTemplate);
+        const transTemplate = savedTransTemplate ? JSON.parse(savedTransTemplate) : [];
+        const mgrTemplate = savedMgrTemplate ? JSON.parse(savedMgrTemplate) : null;
 
-    const updatedRoutes = routesTemplate.map((r: any) => ({
-      ...r,
-      id: `${r.zone}-${r.shift}-${Date.now()}-${Math.random()}`,
-      driver: staffList.find(s => String(s.id).trim() === String(r.driver || '').trim()) || null,
-      aux1: staffList.find(s => String(s.id).trim() === String(r.aux1 || '').trim()) || null,
-      aux2: staffList.find(s => String(s.id).trim() === String(r.aux2 || '').trim()) || null,
-      aux3: staffList.find(s => String(s.id).trim() === String(r.aux3 || '').trim()) || null,
-      aux4: staffList.find(s => String(s.id).trim() === String(r.aux4 || '').trim()) || null,
-      replacementDriver: null,
-      replacementAux1: null,
-      replacementAux2: null,
-      departureTime: '',
-      dumpTime: '',
-      tonnage: '',
-      supervisionReport: '',
-      zoneStatus: ZoneStatus.PENDING
-    }));
+        const updatedRoutes = routesTemplate.map((r: any) => ({
+          ...r,
+          id: `${r.zone}-${r.shift}-${Date.now()}-${Math.random()}`,
+          driver: staffList.find(s => String(s.id).trim() === String(r.driver || '').trim()) || null,
+          aux1: staffList.find(s => String(s.id).trim() === String(r.aux1 || '').trim()) || null,
+          aux2: staffList.find(s => String(s.id).trim() === String(r.aux2 || '').trim()) || null,
+          aux3: staffList.find(s => String(s.id).trim() === String(r.aux3 || '').trim()) || null,
+          aux4: staffList.find(s => String(s.id).trim() === String(r.aux4 || '').trim()) || null,
+          replacementDriver: null,
+          replacementAux1: null,
+          replacementAux2: null,
+          departureTime: '',
+          dumpTime: '',
+          tonnage: '',
+          supervisionReport: '',
+          zoneStatus: ZoneStatus.PENDING
+        }));
 
-    const updatedTrans = transTemplate.map((tr: any) => ({
-      ...tr,
-      id: `TR-${tr.shift}-${Date.now()}`,
-      maquinista: staffList.find(s => String(s.id).trim() === String(tr.maquinista || '').trim()) || null,
-      encargado: staffList.find(s => String(s.id).trim() === String(tr.encargado || '').trim()) || null,
-      balancero1: staffList.find(s => String(s.id).trim() === String(tr.balancero1 || '').trim()) || null,
-      auxTolva1: staffList.find(s => String(s.id).trim() === String(tr.auxTolva1 || '').trim()) || null,
-      auxTolva2: staffList.find(s => String(s.id).trim() === String(tr.auxTolva2 || '').trim()) || null,
-      units: tr.units.map((u: any) => ({
-        ...u,
-        driver: staffList.find(s => String(s.id).trim() === String(u.driver || '').trim()) || null
-      })),
-      observaciones: ''
-    }));
+        const updatedTrans = transTemplate.map((tr: any) => ({
+          ...tr,
+          id: `TR-${tr.shift}-${Date.now()}`,
+          maquinista: staffList.find(s => String(s.id).trim() === String(tr.maquinista || '').trim()) || null,
+          encargado: staffList.find(s => String(s.id).trim() === String(tr.encargado || '').trim()) || null,
+          balancero1: staffList.find(s => String(s.id).trim() === String(tr.balancero1 || '').trim()) || null,
+          auxTolva1: staffList.find(s => String(s.id).trim() === String(tr.auxTolva1 || '').trim()) || null,
+          auxTolva2: staffList.find(s => String(s.id).trim() === String(tr.auxTolva2 || '').trim()) || null,
+          units: tr.units.map((u: any) => ({
+            ...u,
+            driver: staffList.find(s => String(s.id).trim() === String(u.driver || '').trim()) || null
+          })),
+          observaciones: ''
+        }));
 
-    setRecords(updatedRoutes);
-    setTransferRecords(updatedTrans);
+        setRecords(updatedRoutes);
+        setTransferRecords(updatedTrans);
+        if (mgrTemplate) setShiftManagers(mgrTemplate);
+    } catch(e) {
+        alert("Error al aplicar plantilla: Datos incompatibles.");
+    }
     setShowTemplateMenu(false);
   };
 
@@ -357,12 +377,20 @@ const App: React.FC = () => {
     } else if (pickerState.type === 'transfer') {
       setTransferRecords(prev => prev.map(tr => {
         if (tr.id !== pickerState.targetId) return tr;
-        if (pickerState.field === 'units') {
+        if (pickerState.field === 'units' && pickerState.unitIdx !== undefined) {
             const u = [...tr.units];
             u[pickerState.unitIdx!] = { ...u[pickerState.unitIdx!], driver: selectedStaff };
             return { ...tr, units: u as any };
         }
         return { ...tr, [pickerState.field]: selectedStaff };
+      }));
+    } else if (pickerState.type === 'managers') {
+      setShiftManagers(prev => ({
+          ...prev,
+          [pickerState.targetId]: {
+              ...prev[pickerState.targetId],
+              [pickerState.field]: selectedStaff ? selectedStaff.name : ''
+          }
       }));
     }
     setPickerState(null);
@@ -371,7 +399,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden">
+    <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden text-slate-800">
       <aside className="w-64 bg-[#111827] text-white flex flex-col shrink-0 z-[100] shadow-2xl">
         <div className="p-8 text-center border-b border-white/5">
             <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-2"><img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Quilmes" /></div>
@@ -382,7 +410,7 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('parte')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' ? 'bg-indigo-600 shadow-lg text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
             <button onClick={() => setActiveTab('personal')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 shadow-lg text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
             <div className="pt-8 px-4">
-                <button onClick={() => { if(window.confirm('¿Reiniciar?')) localStorage.removeItem(STAFF_STORAGE_KEY); location.reload(); }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-900/30 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-900/50 transition-all border border-red-900/50"><RefreshCcw size={14} /> Reiniciar Demos</button>
+                <button onClick={() => { if(window.confirm('¿Limpiar todos los datos?')) { localStorage.clear(); location.reload(); } }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-900/30 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-900/50 transition-all border border-red-900/50"><RefreshCcw size={14} /> Limpiar Todo</button>
             </div>
         </nav>
       </aside>
@@ -406,13 +434,12 @@ const App: React.FC = () => {
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-black text-slate-700 outline-none uppercase cursor-pointer" />
-                             {!isToday && <CalendarIcon size={12} className="text-amber-500" />}
                         </div>
-                        {!isToday && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest leading-none mt-0.5">Modo Consulta</span>}
+                        {!isToday && <span className="text-[8px] font-black text-amber-600 uppercase tracking-widest leading-none mt-0.5">Historial</span>}
                     </div>
                 </div>
                 {!isToday && (
-                    <button onClick={() => setSelectedDate(today)} className="ml-2 bg-amber-500 text-white p-2 rounded-full shadow-md hover:bg-amber-600 transition-all hover:rotate-[-45deg] active:scale-90" title="Volver a hoy"><RotateCcw size={16} /></button>
+                    <button onClick={() => setSelectedDate(today)} className="ml-2 bg-amber-500 text-white p-2 rounded-full shadow-md hover:bg-amber-600 transition-all hover:rotate-[-45deg] active:scale-90"><RotateCcw size={16} /></button>
                 )}
                 <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className={`p-2 rounded-full transition-colors ${!isToday ? 'hover:bg-amber-100 text-amber-600' : 'hover:bg-white text-slate-400'}`}><ChevronRight size={18} /></button>
              </div>
@@ -421,43 +448,24 @@ const App: React.FC = () => {
 
              <div className="flex items-center gap-3">
                 <div className="relative">
-                    <button 
-                        onClick={() => setShowTemplateMenu(!showTemplateMenu)}
-                        className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${saveFeedback ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-indigo-400 hover:bg-black'}`}
-                    >
-                        {saveFeedback ? <CheckCircle size={18} /> : <Layout size={18} />}
-                        Plantillas
-                        <ChevronDown size={14} className={`transition-transform ${showTemplateMenu ? 'rotate-180' : ''}`} />
+                    <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${saveFeedback ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-indigo-400 hover:bg-black'}`}>
+                        {saveFeedback ? <CheckCircle size={18} /> : <Layout size={18} />} Plantillas <ChevronDown size={14} className={`transition-transform ${showTemplateMenu ? 'rotate-180' : ''}`} />
                     </button>
-                    
                     {showTemplateMenu && (
                         <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-[200] animate-in slide-in-from-top-2">
                             <button onClick={saveCurrentAsTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-indigo-50 rounded-xl transition-all text-left">
                                 <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Save size={18} /></div>
-                                <div>
-                                    <p className="text-[10px] font-black text-slate-800 uppercase">Guardar actual</p>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Define como base maestra</p>
-                                </div>
+                                <div><p className="text-[10px] font-black text-slate-800 uppercase">Guardar Plantilla</p><p className="text-[8px] font-bold text-slate-400 uppercase">Base Maestra</p></div>
                             </button>
-                            <div className="h-px bg-slate-100 my-1"></div>
                             <button onClick={applyTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-amber-50 rounded-xl transition-all text-left">
                                 <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Wand2 size={18} /></div>
-                                <div>
-                                    <p className="text-[10px] font-black text-slate-800 uppercase">Cargar maestra</p>
-                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Aplica personal fijo</p>
-                                </div>
+                                <div><p className="text-[10px] font-black text-slate-800 uppercase">Aplicar Maestra</p><p className="text-[8px] font-bold text-slate-400 uppercase">Cargar Todo</p></div>
                             </button>
                         </div>
                     )}
                 </div>
 
-                <button 
-                    onClick={() => setIsNewRouteModalOpen(true)} 
-                    title="Añadir Nueva Ruta"
-                    className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center hover:bg-indigo-700 shadow-md active:scale-90 transition-all shrink-0"
-                >
-                    <Plus size={34} strokeWidth={4} />
-                </button>
+                <button onClick={() => setIsNewRouteModalOpen(true)} className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center hover:bg-indigo-700 shadow-md active:scale-90 transition-all shrink-0"><Plus size={34} strokeWidth={4} /></button>
                 <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-5 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg hover:brightness-110 transition-all h-12 shrink-0"><CheckCircle2 size={16} /> Cierre</button>
              </div>
           </div>
@@ -473,13 +481,22 @@ const App: React.FC = () => {
                             <button onClick={() => setSubTab('REPASO')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
                             <button onClick={() => setSubTab('TRANSFERENCIA')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'TRANSFERENCIA' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>TOLVA</button>
                         </div>
+                        {shiftFilter !== 'TODOS' && (
+                            <ShiftManagersTop 
+                                shift={shiftFilter} 
+                                data={shiftManagers[shiftFilter]} 
+                                staffList={staffList} 
+                                onOpenPicker={(f, r) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r })} 
+                                onUpdateStaff={handleUpdateStaff} 
+                            />
+                        )}
                     </div>
                     <div className="flex-1 p-4 overflow-hidden">
                         <div className="h-full bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
                             {subTab === 'TRANSFERENCIA' ? (
                                 <TransferTable data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
                             ) : (
-                                <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`TURNO ${shiftFilter}`} />
+                                <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`TURNO ${shiftFilter}`} selectedDate={selectedDate} />
                             )}
                         </div>
                     </div>
@@ -496,11 +513,11 @@ const App: React.FC = () => {
       {pickerState && (
         <div className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
-                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center shrink-0">
+                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
                     <h3 className="text-xl font-black uppercase tracking-tight italic">Asignar {pickerState.role}</h3>
                     <button onClick={() => { setPickerState(null); setPickerSearch(''); setAbsencePickerId(null); }} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={24} /></button>
                 </div>
-                <div className="px-8 py-6 border-b flex gap-6 bg-white items-center shrink-0">
+                <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
                     <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Quitar</button>
                     <div className="relative flex-1 group">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={20} />
@@ -517,13 +534,18 @@ const App: React.FC = () => {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-5 flex-1">
                                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${isAbsent ? getAbsenceStyles(s.address || 'FALTA') : isCurrent ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
-                                    <div onClick={() => !isAbsent && handlePickerSelection(s)} className="cursor-pointer">
+                                    <div onClick={() => !isAbsent && handlePickerSelection(s)} className="cursor-pointer flex-1">
                                         <h4 className="text-[13px] font-black uppercase text-slate-800 leading-none">{s.name}</h4>
                                         <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase">LEGAJO: {s.id} {isAbsent && `(${s.address || 'FALTA'})`}</p>
                                     </div>
                                 </div>
                                 <div className="flex gap-3">
-                                    <button onClick={(e) => { e.stopPropagation(); if (isAbsent) { handleUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '' }); } else { setAbsencePickerId(isShowingReasons ? null : String(s.id)); } }} className={`p-4 rounded-2xl text-white shadow-lg transition-all ${isAbsent || isShowingReasons ? 'bg-red-500 scale-105' : 'bg-red-400 hover:scale-105'}`}>{isAbsent ? <UserCheck size={24} /> : <UserX size={24} />}</button>
+                                    <button onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        if (isAbsent) { 
+                                            handleUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined, absenceReturnDate: undefined, isIndefiniteAbsence: false }); 
+                                        } else { setAbsencePickerId(isShowingReasons ? null : String(s.id)); } 
+                                    }} className={`p-4 rounded-2xl text-white shadow-lg transition-all ${isAbsent || isShowingReasons ? 'bg-red-500 scale-105' : 'bg-red-400 hover:scale-105'}`}>{isAbsent ? <UserCheck size={24} /> : <UserX size={24} />}</button>
                                     <button disabled={isAbsent} onClick={() => handlePickerSelection(s)} className={`p-4 rounded-2xl text-white shadow-lg transition-all ${isAbsent ? 'bg-slate-200 cursor-not-allowed opacity-50' : 'bg-[#5850ec] hover:scale-105'}`}><Check size={24} /></button>
                                 </div>
                             </div>

@@ -7,7 +7,7 @@ import { getAbsenceStyles } from '../styles';
 interface TransferTableProps {
   data: TransferRecord[];
   onUpdateRow: (id: string, field: keyof TransferRecord, value: any) => void;
-  onOpenPicker: (id: string, field: string, role: string, unitIdx?: number) => void;
+  onOpenPicker: (id: string, field: string, role: string, currentValueId?: string, unitIdx?: number) => void;
   onUpdateStaff: (staff: StaffMember) => void;
   staffList?: StaffMember[];
   isMasterMode?: boolean;
@@ -122,7 +122,7 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                     {row.units.map((unit, uIdx) => (
                         <div key={unit.id} className="flex border-b border-slate-100">
                             <div className="w-44">
-                                <StaffSlot value={unit.driver} onClick={() => onOpenPicker(row.id, 'units', `CHOFER ${uIdx + 1}`, uIdx)} />
+                                <StaffSlot value={unit.driver} onClick={() => onOpenPicker(row.id, 'units', `CHOFER ${uIdx + 1}`, unit.driver?.id, uIdx)} />
                             </div>
                             <div className="w-44 grid grid-cols-2 p-1 gap-1">
                                 <input data-unit={uIdx} data-field="dom1" type="text" value={unit.domain1} onChange={e => updateUnitField(row.id, uIdx, 'domain1', e.target.value.toUpperCase())} onKeyDown={e => navigateTolva(e, row.id, uIdx, 'dom1')} className="text-center font-mono font-black text-[9px] bg-slate-50 rounded border outline-none uppercase focus:bg-white focus:ring-1 focus:ring-indigo-500" placeholder="DOM 1" />
@@ -144,7 +144,7 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                     ))}
                     <div className={`flex ${isMasterMode ? 'bg-orange-50/30' : 'bg-slate-50'}`}>
                         <div className="w-44">
-                            <StaffSlot label="MAQUINISTA" value={row.maquinista} onClick={() => onOpenPicker(row.id, 'maquinista', 'MAQUINISTA')} />
+                            <StaffSlot label="MAQUINISTA" value={row.maquinista} onClick={() => onOpenPicker(row.id, 'maquinista', 'MAQUINISTA', row.maquinista?.id)} />
                         </div>
                         <div className="w-44 p-1 flex items-center">
                             <input type="text" value={row.maquinistaDomain} onChange={e => onUpdateRow(row.id, 'maquinistaDomain', e.target.value.toUpperCase())} className="w-full text-center font-mono font-black text-[9px] uppercase border rounded outline-none focus:bg-white" placeholder="DOMINIO MAQ." />
@@ -159,10 +159,10 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                 <div className="w-64 flex flex-col shrink-0">
                      <div className={`text-white text-[8px] font-black text-center py-2 uppercase tracking-widest ${isMasterMode ? 'bg-orange-700' : 'bg-[#8b3d6a]'}`}>Auxiliares y Control</div>
                      <div className="grid grid-cols-1 divide-y divide-slate-100 flex-1">
-                        <StaffSlot label="Tolva 1" value={row.auxTolva1} onClick={() => onOpenPicker(row.id, 'auxTolva1', 'AUX TOLVA 1')} small />
-                        <StaffSlot label="Tolva 2" value={row.auxTolva2} onClick={() => onOpenPicker(row.id, 'auxTolva2', 'AUX TOLVA 2')} small />
-                        <StaffSlot label="Encargado" value={row.encargado} onClick={() => onOpenPicker(row.id, 'encargado', 'ENCARGADO TOLVA')} small />
-                        <StaffSlot label="Balancero" value={row.balancero1} onClick={() => onOpenPicker(row.id, 'balancero1', 'BALANCERO')} small />
+                        <StaffSlot label="Tolva 1" value={row.auxTolva1} onClick={() => onOpenPicker(row.id, 'auxTolva1', 'AUX TOLVA 1', row.auxTolva1?.id)} small />
+                        <StaffSlot label="Tolva 2" value={row.auxTolva2} onClick={() => onOpenPicker(row.id, 'auxTolva2', 'AUX TOLVA 2', row.auxTolva2?.id)} small />
+                        <StaffSlot label="Encargado" value={row.encargado} onClick={() => onOpenPicker(row.id, 'encargado', 'ENCARGADO TOLVA', row.encargado?.id)} small />
+                        <StaffSlot label="Balancero" value={row.balancero1} onClick={() => onOpenPicker(row.id, 'balancero1', 'BALANCERO', row.balancero1?.id)} small />
                      </div>
                 </div>
             </div>

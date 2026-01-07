@@ -7,7 +7,7 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-import { getAbsenceStyles } from './styles'; // Importación crítica
+import { getAbsenceStyles } from './styles';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
     MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
@@ -18,9 +18,8 @@ import {
     Users,
     Search,
     X,
-    UserX,
+    Plus,
     Check,
-    UserCheck,
     ChevronLeft,
     ChevronRight,
     UserMinus,
@@ -33,7 +32,6 @@ import {
     Wand2
 } from 'lucide-react';
 
-// Prefijos para persistencia aislada
 const DB_PREFIX = 'girsu_v20_';
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
@@ -64,37 +62,24 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [pickerState, setPickerState] = useState<{ type: string, targetId: string, field: string, role: string, unitIdx?: number } | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
-  const [absencePickerId, setAbsencePickerId] = useState<string | null>(null);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  // --- LÓGICA DE CARGA ADN / DÍA ---
   useEffect(() => {
     setIsLoaded(false);
-    
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF;
     setStaffList(initialStaff);
-
     const findS = (id: any, list: StaffMember[]) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
 
     if (activeTab === 'adn') {
         const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
         const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
-
-        if (adnRoutes) {
-            setRecords(JSON.parse(adnRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff) })));
-        } else {
-            initializeFromConstants(initialStaff);
-        }
-
-        if (adnTrans) {
-            setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
-        } else {
-            const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
-            setTransferRecords([createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')]);
-        }
+        if (adnRoutes) setRecords(JSON.parse(adnRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff) })));
+        else initializeFromConstants(initialStaff);
+        if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
+        else setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
     } else {
         const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
@@ -120,13 +105,14 @@ const App: React.FC = () => {
     setIsLoaded(true);
   }, [selectedDate, activeTab]);
 
+  const createEmptyTrans = (s: string): TransferRecord => ({ id: `TR-${s}`, shift: s as any, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
+
   const initializeFromConstants = (list: StaffMember[]) => {
     const findS = (id: any) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
     const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findS(m.driver), aux1: findS(m.aux1), aux2: findS(m.aux2), aux3: findS(m.aux3), aux4: findS(m.aux4), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
     setRecords([...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')]);
   };
 
-  // --- PERSISTENCIA ---
   useEffect(() => {
     if (!isLoaded) return;
     try {
@@ -180,10 +166,6 @@ const App: React.FC = () => {
         <nav className="flex-1 px-4 space-y-2 mt-8">
             <button onClick={() => setActiveTab('parte')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
             <button onClick={() => setActiveTab('personal')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
-            <div className="mt-8 pt-8 border-t border-white/5 space-y-2">
-                <p className="px-6 text-[8px] font-black text-slate-500 uppercase tracking-widest mb-2">Configuración Base</p>
-                <button onClick={() => setActiveTab('adn')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'adn' ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Database size={20} /><span className="text-[11px] font-black uppercase tracking-widest">ADN Plantilla</span></button>
-            </div>
             <div className="pt-8 px-4 mt-auto mb-8">
                 <button onClick={() => { if(window.confirm('¿ELIMINAR HISTORIAL?')) { localStorage.clear(); window.location.reload(); } }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-950/40 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-900/50 transition-all border border-red-900/50"><RefreshCcw size={14} /> Limpiar Todo</button>
             </div>
@@ -210,21 +192,32 @@ const App: React.FC = () => {
               )}
           </div>
           
-          <div className="flex items-center gap-3 relative z-[100]">
+          <div className="flex items-center gap-2 relative z-[100]">
              {activeTab !== 'adn' && (
-                <div className="flex items-center border rounded-full px-2 py-1.5 bg-white border-slate-200 shadow-sm">
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={18} /></button>
-                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-black text-slate-700 outline-none uppercase cursor-pointer px-2" />
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={18} /></button>
+                <div className="flex items-center border rounded-full px-2 py-1 bg-white border-slate-200 shadow-sm mr-2">
+                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={16} /></button>
+                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[11px] font-black text-slate-700 outline-none uppercase cursor-pointer px-2 w-28 text-center" />
+                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={16} /></button>
                 </div>
              )}
+             
              {activeTab === 'adn' ? (
-                 <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl h-12 transition-all hover:scale-105 hover:bg-emerald-700"><CheckCircle size={18} /> Guardar ADN</button>
+                 <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl h-11 transition-all hover:scale-105 hover:bg-emerald-700"><CheckCircle size={18} /> Guardar ADN</button>
              ) : (
                 <>
-                    {!isToday && <button onClick={() => setSelectedDate(today)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg hover:rotate-[-45deg] transition-all"><RotateCcw size={18} /></button>}
-                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-2xl text-[9px] font-black uppercase flex items-center gap-2 hover:text-white transition-all"><Wand2 size={16} /> Cargar ADN Hoy</button>
-                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-5 py-3 rounded-2xl text-[9px] font-black uppercase flex items-center gap-2 shadow-lg h-12 shrink-0"><CheckCircle2 size={16} /> Cierre</button>
+                    {/* Botón ADN al lado de la fecha */}
+                    <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all active:scale-95" title="ADN Maestro"><Database size={18} /></button>
+                    
+                    {/* Botón Nueva Ruta */}
+                    <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md hover:bg-indigo-700 transition-all active:scale-95" title="Nueva Ruta"><Plus size={18} /></button>
+
+                    {/* Botón Cargar ADN (Varita) */}
+                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md hover:bg-slate-900 transition-all active:scale-95" title="Cargar ADN"><Wand2 size={18} /></button>
+                    
+                    {/* Botón Cierre (Tilde) */}
+                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md hover:bg-emerald-700 transition-all active:scale-95" title="Cierre de Turno"><CheckCircle2 size={18} /></button>
+
+                    {!isToday && <button onClick={() => setSelectedDate(today)} className="bg-slate-100 text-slate-400 p-3 rounded-2xl shadow-sm hover:text-indigo-600 transition-all"><RotateCcw size={18} /></button>}
                 </>
              )}
           </div>

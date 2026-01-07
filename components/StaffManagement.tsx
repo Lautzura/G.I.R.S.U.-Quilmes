@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from '../types';
-import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2 } from 'lucide-react';
+import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2, FilterX } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../App';
@@ -25,8 +25,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
-  const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [activeReasonFilter, setActiveReasonFilter] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleSort = (key: SortKey) => {
@@ -48,11 +48,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
 
         if (rows.length === 0) {
-            alert('El archivo está vacío.');
             setIsImporting(false);
             return;
         }
@@ -75,7 +73,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         }
 
         if (headerIdx === -1 || legajoCol === -1) {
-            alert('No se detectó el encabezado "LEGAJO". Verifique el archivo.');
+            alert('No se detectó el encabezado "LEGAJO".');
             setIsImporting(false);
             return;
         }
@@ -103,7 +101,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 
         if (newStaff.length > 0 && onBulkAddStaff) {
             onBulkAddStaff(newStaff);
-            alert(`¡Carga de ${newStaff.length} colaboradores terminada!`);
         }
       } catch (err) {
         alert('Error al procesar el Excel.');
@@ -119,10 +116,26 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     return staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift);
   }, [staffList, selectedShift]);
 
+  const absenceBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    shiftStaff.forEach(s => {
+      if (s.status === StaffStatus.ABSENT && s.address) {
+        counts[s.address] = (counts[s.address] || 0) + 1;
+      }
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [shiftStaff]);
+
   const displayedStaff = useMemo(() => {
     let filtered = shiftStaff.filter(s => {
-      const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesSearch;
+      const search = searchTerm.toLowerCase();
+      const matchesSearch = s.name.toLowerCase().includes(search) || s.id.toLowerCase().includes(search);
+      if (!matchesSearch) return false;
+      
+      if (activeReasonFilter) {
+        return s.status === StaffStatus.ABSENT && s.address === activeReasonFilter;
+      }
+      return true;
     });
 
     return filtered.sort((a, b) => {
@@ -132,23 +145,14 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [shiftStaff, searchTerm, sortConfig]);
+  }, [shiftStaff, searchTerm, sortConfig, activeReasonFilter]);
 
   const stats = useMemo(() => {
-    const absenceBreakdown: Record<string, number> = {};
-    shiftStaff.forEach(s => {
-      if (s.status === StaffStatus.ABSENT) {
-        const reason = s.address || 'OTRO / NO ESPECIFICADO';
-        absenceBreakdown[reason] = (absenceBreakdown[reason] || 0) + 1;
-      }
-    });
-
     return { 
       total: shiftStaff.length, 
       presente: shiftStaff.filter(s => s.status === StaffStatus.PRESENT).length, 
       reserva: shiftStaff.filter(s => s.status === StaffStatus.RESERVA).length, 
-      ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length,
-      absenceBreakdown: Object.entries(absenceBreakdown).sort((a, b) => b[1] - a[1])
+      ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length
     };
   }, [shiftStaff]);
 
@@ -168,6 +172,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
+      {/* TARJETAS PRINCIPALES */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="TOTAL" value={stats.total} icon={<Users size={28} />} color="indigo" />
         <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={28} />} color="emerald" />
@@ -175,25 +180,52 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={28} />} color="red" />
       </div>
 
+      {/* DESGLOSE DE FALTAS POR MOTIVO */}
+      {absenceBreakdown.length > 0 && (
+        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 animate-in slide-in-from-top-4">
+            <div className="flex items-center gap-4 mb-4">
+                <div className="p-2 bg-red-50 text-red-600 rounded-xl"><AlertCircle size={20} /></div>
+                <div>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Resumen de Novedades</h3>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase">Haz clic en un motivo para filtrar la lista</p>
+                </div>
+                {activeReasonFilter && (
+                    <button onClick={() => setActiveReasonFilter(null)} className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase hover:bg-slate-200 transition-all">
+                        <FilterX size={14} /> Quitar Filtro
+                    </button>
+                )}
+            </div>
+            <div className="flex flex-wrap gap-3">
+                {absenceBreakdown.map(([reason, count]) => (
+                    <button 
+                        key={reason} 
+                        onClick={() => setActiveReasonFilter(activeReasonFilter === reason ? null : reason)}
+                        className={`group px-4 py-3 rounded-2xl flex items-center gap-4 transition-all border-2 ${activeReasonFilter === reason ? 'border-indigo-500 bg-indigo-50 scale-105 shadow-md' : 'border-slate-50 hover:border-slate-200 hover:bg-slate-50'}`}
+                    >
+                        <span className={`text-[10px] font-black uppercase ${activeReasonFilter === reason ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'}`}>{reason}</span>
+                        <span className={`min-w-[24px] h-6 flex items-center justify-center rounded-lg text-[11px] font-black text-white ${activeReasonFilter === reason ? 'bg-indigo-600' : 'bg-slate-800'}`}>{count}</span>
+                    </button>
+                ))}
+            </div>
+        </div>
+      )}
+
+      {/* BARRA DE HERRAMIENTAS */}
       <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-6">
         <div className="flex flex-col lg:flex-row items-center gap-6 w-full xl:w-auto">
             <div className="flex items-center gap-4 shrink-0">
                 <div className="bg-[#111827] text-white p-3 rounded-2xl shadow-xl"><LayoutList size={24} /></div>
                 <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">PADRÓN GENERAL</h2>
             </div>
-            
             <div className="relative w-full lg:w-80 group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                <input type="text" placeholder="BUSCAR NOMBRE O LEGAJO..." value={searchTerm} onChange={(e) => onSearchChange(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm" />
+                <input type="text" placeholder="BUSCAR NOMBRE O LEGAJO..." value={searchTerm} onChange={(e) => onSearchChange(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 transition-all shadow-sm" />
             </div>
-
             <div className="flex items-center gap-2">
-                <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mr-2 shrink-0">ORDEN:</span>
                 <SortButton label="NOMBRE" sortKey="name" />
                 <SortButton label="LEGAJO" sortKey="id" />
             </div>
         </div>
-
         <div className="flex items-center gap-3 w-full xl:w-auto">
             <input type="file" ref={fileInputRef} onChange={handleExcelImport} className="hidden" accept=".xlsx, .xls" />
             <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex-1 xl:flex-none flex items-center justify-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-[2rem] text-[11px] font-black uppercase shadow-xl hover:brightness-110 transition-all">
@@ -222,7 +254,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                 <tr key={s.id} className="h-24 hover:bg-slate-50 transition-colors group">
                   <td className="pl-12">
                     <div className="flex items-center gap-5">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>{s.name.charAt(0)}</div>
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-sm ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : 'bg-indigo-50 text-indigo-600'}`}>{s.name.charAt(0)}</div>
                       <div>
                         <p className="font-black text-slate-800 text-[13px] uppercase leading-none tracking-tight">{s.name}</p>
                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-2">LEGAJO: {s.id}</p>
@@ -230,7 +262,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                     </div>
                   </td>
                   <td className="text-center">
-                    <span className="text-[9px] font-black px-4 py-2 bg-slate-100 rounded-xl text-slate-500 uppercase tracking-tighter inline-block">{s.role || '---'}</span>
+                    <span className="text-[9px] font-black px-4 py-2 bg-slate-100 rounded-xl text-slate-500 uppercase inline-block">{s.role || '---'}</span>
                   </td>
                   <td className="text-center">
                     <span className="text-[10px] font-black text-slate-400 uppercase italic opacity-70">{s.preferredShift}</span>
@@ -242,8 +274,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                   </td>
                   <td className="pr-12 text-right">
                     <div className="flex justify-end gap-3">
-                      <button type="button" onClick={() => setEditingStaff(s)} className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"><Edit3 size={18} /></button>
-                      <button type="button" onClick={(e) => { e.preventDefault(); if(window.confirm(`¿Eliminar a ${s.name} permanentemente?`)) onRemoveStaff(String(s.id).trim()); }} className="p-3 text-red-500 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-md border border-red-200"><Trash2 size={18} /></button>
+                      <button onClick={() => setEditingStaff(s)} className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"><Edit3 size={18} /></button>
+                      <button onClick={() => onRemoveStaff(s.id)} className="p-3 text-red-500 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-md border border-red-200"><Trash2 size={18} /></button>
                     </div>
                   </td>
                 </tr>
@@ -260,7 +292,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 };
 
 const StatCard: React.FC<{ label: string, value: number, icon: React.ReactNode, color: string }> = ({ label, value, icon, color }) => (
-    <div className={`bg-white rounded-[2.5rem] p-8 flex items-center gap-6 shadow-sm border-l-[12px] border-${color}-600 border-slate-100 transition-all hover:translate-y-[-4px]`}>
+    <div className={`bg-white rounded-[2.5rem] p-8 flex items-center gap-6 shadow-sm border-l-[12px] border-${color}-600 transition-all hover:translate-y-[-4px]`}>
         <div className={`p-4 rounded-full bg-${color}-50 text-${color}-600 flex items-center justify-center shrink-0`}>{icon}</div>
         <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>

@@ -8,7 +8,7 @@ interface ComponentProps {
   shift: string;
   data: ShiftMetadata;
   staffList: StaffMember[];
-  onOpenPicker: (field: keyof ShiftMetadata, role: string) => void;
+  onOpenPicker: (field: keyof ShiftMetadata, role: string, currentValueId?: string) => void;
   onUpdateStaff: (staff: StaffMember) => void;
 }
 
@@ -80,7 +80,7 @@ export const ShiftManagersTop: React.FC<ComponentProps> = ({ data, staffList, on
         name={data?.supervisor || ''}
         staff={supervisorStaff}
         icon={<User size={10} />}
-        onOpen={() => onOpenPicker('supervisor', 'ENCARGADO')}
+        onOpen={() => onOpenPicker('supervisor', 'ENCARGADO', supervisorStaff?.id)}
         onMarkPresent={onUpdateStaff}
       />
       <ManagerSlot 
@@ -88,7 +88,7 @@ export const ShiftManagersTop: React.FC<ComponentProps> = ({ data, staffList, on
         name={data?.subSupervisor || ''}
         staff={subSupervisorStaff}
         icon={<Shield size={10} />}
-        onOpen={() => onOpenPicker('subSupervisor', 'SUBENCARGADO')}
+        onOpen={() => onOpenPicker('subSupervisor', 'SUBENCARGADO', subSupervisorStaff?.id)}
         onMarkPresent={onUpdateStaff}
       />
     </div>

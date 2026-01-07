@@ -4,7 +4,6 @@ import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from
 import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2, FilterX } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
-// IMPORTACIÓN CORREGIDA PARA VERCEL:
 import { getAbsenceStyles } from '../styles';
 import * as XLSX from 'xlsx';
 

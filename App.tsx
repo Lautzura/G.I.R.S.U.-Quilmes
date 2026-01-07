@@ -35,14 +35,25 @@ import {
     Wand2,
     Plus,
     FileText,
-    Settings
+    Settings,
+    ShieldAlert,
+    Database
 } from 'lucide-react';
 
-const DATA_KEY_PREFIX = 'girsu_v16_data_';
-const TRANS_KEY_PREFIX = 'girsu_v16_trans_';
-const MANAGERS_KEY_PREFIX = 'girsu_v16_mgrs_';
-const STAFF_STORAGE_KEY = 'girsu_v16_staff';
-const MASTER_TEMPLATE_KEY = 'girsu_v16_master_template';
+const DATA_KEY_PREFIX = 'girsu_v17_data_';
+const TRANS_KEY_PREFIX = 'girsu_v17_trans_';
+const MANAGERS_KEY_PREFIX = 'girsu_v17_mgrs_';
+const STAFF_STORAGE_KEY = 'girsu_v17_staff';
+const MASTER_TEMPLATE_KEY = 'girsu_v17_master_template_v2';
+
+const safeParse = (key: string, fallback: any) => {
+    try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : fallback;
+    } catch (e) {
+        return fallback;
+    }
+};
 
 const resolveStaffStatus = (member: StaffMember, dateStr: string): StaffMember => {
     if (!member) return member;
@@ -83,6 +94,9 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'parte' | 'personal'>('parte');
   const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA'>('GENERAL');
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [isTemplateMode, setIsTemplateMode] = useState(false);
+  
+  // Estados de datos
   const [records, setRecords] = useState<RouteRecord[]>([]);
   const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -91,6 +105,7 @@ const App: React.FC = () => {
     TARDE: { supervisor: '', subSupervisor: '', absences: [] },
     NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
   });
+
   const [shiftFilter, setShiftFilter] = useState<'MAÑANA' | 'TARDE' | 'NOCHE' | 'TODOS'>('MAÑANA');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
@@ -99,183 +114,108 @@ const App: React.FC = () => {
   const [absencePickerId, setAbsencePickerId] = useState<string | null>(null);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
-  const [saveFeedback, setSaveFeedback] = useState(false);
-  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
 
   const isToday = selectedDate === today;
 
-  // CARGA DE DATOS SEGURA
+  // EFECTO DE CARGA (SISTEMA V17)
   useEffect(() => {
     setIsLoaded(false);
     try {
-        const dateKey = `${DATA_KEY_PREFIX}${selectedDate}`;
-        const transKey = `${TRANS_KEY_PREFIX}${selectedDate}`;
-        const managersKey = `${MANAGERS_KEY_PREFIX}${selectedDate}`;
-        
-        // 1. CARGAR PERSONAL
-        let rawStaff: any = [];
-        const savedStaff = localStorage.getItem(STAFF_STORAGE_KEY);
-        if (savedStaff) {
-            try { rawStaff = JSON.parse(savedStaff); } catch { rawStaff = EXTRA_STAFF; }
-        } else { rawStaff = EXTRA_STAFF; }
-        if (!Array.isArray(rawStaff)) rawStaff = EXTRA_STAFF;
-
+        // 1. Cargar Staff
+        const rawStaff = safeParse(STAFF_STORAGE_KEY, EXTRA_STAFF);
         const resolvedStaff = rawStaff.map((s: any) => resolveStaffStatus(s, selectedDate));
         setStaffList(resolvedStaff);
 
-        const findS = (m: any) => {
-            if (!m) return null;
-            const idToFind = String(typeof m === 'string' ? m : (m.id || '')).trim();
-            if (!idToFind) return null;
-            return resolvedStaff.find((s: StaffMember) => String(s.id).trim() === idToFind) || null;
-        };
+        const findS = (id: any) => resolvedStaff.find((s: StaffMember) => String(s.id).trim() === String(id || '').trim()) || null;
 
-        // 2. CARGAR RUTAS DEL DÍA
-        let rawRoutes: any = [];
-        const savedRoutes = localStorage.getItem(dateKey);
-        if (savedRoutes) {
-            try { rawRoutes = JSON.parse(savedRoutes); } catch { rawRoutes = []; }
-        }
-        
-        if (!Array.isArray(rawRoutes) || rawRoutes.length === 0) {
-            // Inicialización por defecto si no hay nada
-            const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}-${Date.now()}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
-            rawRoutes = [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
-        }
-        setRecords(rawRoutes.map((r: any) => ({ ...r, driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4), replacementDriver: findS(r.replacementDriver), replacementAux1: findS(r.replacementAux1), replacementAux2: findS(r.replacementAux2) })));
-
-        // 3. CARGAR TRANSFERENCIA DEL DÍA
-        let rawTrans: any = [];
-        const savedTrans = localStorage.getItem(transKey);
-        if (savedTrans) {
-            try { rawTrans = JSON.parse(savedTrans); } catch { rawTrans = []; }
-        }
-
-        if (!Array.isArray(rawTrans) || rawTrans.length === 0) {
-            const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}-${Date.now()}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
-            rawTrans = [createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')];
-        }
-        setTransferRecords(rawTrans.map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1), auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2), units: (tr.units || []).map((u:any) => ({ ...u, driver: findS(u.driver) })) })));
-
-        // 4. CARGAR ENCARGADOS
-        const savedMgrs = localStorage.getItem(managersKey);
-        if (savedMgrs) {
-            try { setShiftManagers(JSON.parse(savedMgrs)); } catch { }
+        if (isTemplateMode) {
+            // CARGAR MODO PLANTILLA
+            const template = safeParse(MASTER_TEMPLATE_KEY, null);
+            if (template) {
+                setRecords(template.routes.map((r: any) => ({ ...r, driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4) })));
+                setTransferRecords(template.transfer.map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1), auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver) })) })));
+                setShiftManagers(template.managers);
+            } else {
+                // Fallback a constantes si no hay plantilla
+                initializeFromConstants(findS);
+            }
         } else {
-            setShiftManagers({
-                MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
-                TARDE: { supervisor: '', subSupervisor: '', absences: [] },
-                NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
-            });
+            // CARGAR DÍA ESPECÍFICO
+            const dateKey = `${DATA_KEY_PREFIX}${selectedDate}`;
+            const transKey = `${TRANS_KEY_PREFIX}${selectedDate}`;
+            const managersKey = `${MANAGERS_KEY_PREFIX}${selectedDate}`;
+            
+            const savedRoutes = localStorage.getItem(dateKey);
+            
+            if (savedRoutes) {
+                // El día ya tiene datos propios
+                const routes = JSON.parse(savedRoutes);
+                const trans = safeParse(transKey, []);
+                const mgrs = safeParse(managersKey, {});
+                
+                setRecords(routes.map((r: any) => ({ ...r, driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4) })));
+                setTransferRecords(trans.map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1), auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver) })) })));
+                if (Object.keys(mgrs).length > 0) setShiftManagers(mgrs);
+            } else {
+                // El día está vacío -> Clonar Plantilla Maestra
+                const template = safeParse(MASTER_TEMPLATE_KEY, null);
+                if (template) {
+                    setRecords(template.routes.map((r: any) => ({ ...r, id: `${r.zone}-${Date.now()}-${Math.random()}`, driver: findS(r.driver), aux1: findS(r.aux1), aux2: findS(r.aux2), aux3: findS(r.aux3), aux4: findS(r.aux4) })));
+                    setTransferRecords(template.transfer.map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${Date.now()}`, maquinista: findS(tr.maquinista), encargado: findS(tr.encargado), balancero1: findS(tr.balancero1), auxTolva1: findS(tr.auxTolva1), auxTolva2: findS(tr.auxTolva2), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver) })) })));
+                    setShiftManagers(template.managers);
+                } else {
+                    initializeFromConstants(findS);
+                }
+            }
         }
     } catch (e) {
         console.error("BOOT ERROR:", e);
     } finally {
         setIsLoaded(true);
     }
-  }, [selectedDate]);
+  }, [selectedDate, isTemplateMode]);
 
-  // PERSISTENCIA AUTOMÁTICA
+  const initializeFromConstants = (findS: any) => {
+    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findS(m.driver), aux1: findS(m.aux1), aux2: findS(m.aux2), aux3: findS(m.aux3), aux4: findS(m.aux4), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
+    setRecords([...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')]);
+    
+    const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}-${Date.now()}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
+    setTransferRecords([createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')]);
+    
+    setShiftManagers({
+        MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
+        TARDE: { supervisor: '', subSupervisor: '', absences: [] },
+        NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
+    });
+  };
+
+  // PERSISTENCIA
   useEffect(() => {
     if (!isLoaded) return;
     try {
-        localStorage.setItem(`${DATA_KEY_PREFIX}${selectedDate}`, JSON.stringify(records));
-        localStorage.setItem(`${TRANS_KEY_PREFIX}${selectedDate}`, JSON.stringify(transferRecords));
-        localStorage.setItem(`${MANAGERS_KEY_PREFIX}${selectedDate}`, JSON.stringify(shiftManagers));
-        localStorage.setItem(STAFF_STORAGE_KEY, JSON.stringify(staffList));
+        const staffToSave = JSON.stringify(staffList);
+        localStorage.setItem(STAFF_STORAGE_KEY, staffToSave);
+
+        if (isTemplateMode) {
+            // Guardar en llave de PLANTILLA
+            const template = {
+                routes: records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: null, replacementAux1: null, replacementAux2: null, departureTime: '', tonnage: '', zoneStatus: ZoneStatus.PENDING, supervisionReport: '' })),
+                transfer: transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null, trips: u.trips.map(() => ({ hora: '', ton: '' })) })), observaciones: '' })),
+                managers: shiftManagers
+            };
+            localStorage.setItem(MASTER_TEMPLATE_KEY, JSON.stringify(template));
+        } else {
+            // Guardar en llave de DÍA
+            const dateKey = `${DATA_KEY_PREFIX}${selectedDate}`;
+            const transKey = `${TRANS_KEY_PREFIX}${selectedDate}`;
+            const managersKey = `${MANAGERS_KEY_PREFIX}${selectedDate}`;
+            
+            localStorage.setItem(dateKey, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }))));
+            localStorage.setItem(transKey, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
+            localStorage.setItem(managersKey, JSON.stringify(shiftManagers));
+        }
     } catch (e) { }
-  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded]);
-
-  // LÓGICA DE PLANTILLA MAESTRA (MANUAL)
-  const saveAsMasterTemplate = () => {
-    if (!window.confirm("¿GUARDAR ESTA CONFIGURACIÓN COMO PLANTILLA MAESTRA?")) return;
-    
-    const template = {
-        routes: records.map(r => ({
-            ...r,
-            driver: r.driver?.id || null,
-            aux1: r.aux1?.id || null,
-            aux2: r.aux2?.id || null,
-            aux3: r.aux3?.id || null,
-            aux4: r.aux4?.id || null,
-            replacementDriver: null,
-            replacementAux1: null,
-            replacementAux2: null,
-            departureTime: '', tonnage: '', zoneStatus: ZoneStatus.PENDING, supervisionReport: ''
-        })),
-        transfer: transferRecords.map(tr => ({
-            ...tr,
-            maquinista: tr.maquinista?.id || null,
-            encargado: tr.encargado?.id || null,
-            balancero1: tr.balancero1?.id || null,
-            auxTolva1: tr.auxTolva1?.id || null,
-            auxTolva2: tr.auxTolva2?.id || null,
-            units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null, trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })),
-            observaciones: ''
-        })),
-        managers: shiftManagers
-    };
-
-    localStorage.setItem(MASTER_TEMPLATE_KEY, JSON.stringify(template));
-    setSaveFeedback(true);
-    setTimeout(() => setSaveFeedback(false), 2000);
-    setShowTemplateMenu(false);
-  };
-
-  const applyMasterTemplate = () => {
-    const rawTemplate = localStorage.getItem(MASTER_TEMPLATE_KEY);
-    if (!rawTemplate) {
-        alert("No hay una plantilla maestra guardada.");
-        return;
-    }
-    if (!window.confirm("¿CARGAR PLANTILLA MAESTRA? Se sobrescribirán los datos de este día.")) return;
-
-    try {
-        const template = JSON.parse(rawTemplate);
-        const findS = (id: any) => staffList.find(s => String(s.id).trim() === String(id || '').trim()) || null;
-
-        if (template.routes) {
-            setRecords(template.routes.map((r: any) => ({
-                ...r,
-                id: `${r.zone}-${r.shift}-${Date.now()}-${Math.random()}`,
-                driver: findS(r.driver),
-                aux1: findS(r.aux1),
-                aux2: findS(r.aux2),
-                aux3: findS(r.aux3),
-                aux4: findS(r.aux4),
-                replacementDriver: null,
-                replacementAux1: null,
-                replacementAux2: null,
-                departureTime: '', tonnage: '', zoneStatus: ZoneStatus.PENDING, supervisionReport: ''
-            })));
-        }
-
-        if (template.transfer) {
-            setTransferRecords(template.transfer.map((tr: any) => ({
-                ...tr,
-                id: `TR-${tr.shift}-${Date.now()}`,
-                maquinista: findS(tr.maquinista),
-                encargado: findS(tr.encargado),
-                balancero1: findS(tr.balancero1),
-                auxTolva1: findS(tr.auxTolva1),
-                auxTolva2: findS(tr.auxTolva2),
-                units: tr.units.map((u: any) => ({
-                    ...u,
-                    driver: findS(u.driver),
-                    trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
-                })),
-                observaciones: ''
-            })));
-        }
-
-        if (template.managers) setShiftManagers(template.managers);
-        
-        alert("Plantilla cargada correctamente.");
-    } catch (e) {
-        alert("Error al procesar la plantilla.");
-    }
-    setShowTemplateMenu(false);
-  };
+  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, isTemplateMode]);
 
   const currentlyAssignedId = useMemo(() => {
     if (!pickerState || !isLoaded) return null;
@@ -371,65 +311,73 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden text-slate-800">
-      <aside className="w-64 bg-[#111827] text-white flex flex-col shrink-0 z-[100] shadow-2xl">
+      <aside className={`w-64 text-white flex flex-col shrink-0 z-[100] shadow-2xl transition-colors duration-500 ${isTemplateMode ? 'bg-amber-900' : 'bg-[#111827]'}`}>
         <div className="p-8 text-center border-b border-white/5">
             <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-2"><img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Quilmes" /></div>
             <h2 className="text-xl font-black italic text-white uppercase leading-none">QUILMES</h2>
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2">G.I.R.S.U.</p>
         </div>
         <nav className="flex-1 px-4 space-y-2 mt-8">
-            <button onClick={() => setActiveTab('parte')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
-            <button onClick={() => setActiveTab('personal')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
-            <div className="pt-8 px-4 border-t border-white/5 mt-4">
-                <button onClick={() => { if(window.confirm('BORRAR TODO Y REINICIAR?')) { localStorage.clear(); window.location.reload(); } }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-950/40 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-900/50 transition-all border border-red-900/50"><RefreshCcw size={14} /> Limpiar Errores</button>
+            <button onClick={() => { setIsTemplateMode(false); setActiveTab('parte'); }} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' && !isTemplateMode ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
+            <button onClick={() => { setIsTemplateMode(false); setActiveTab('personal'); }} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
+            
+            <div className="mt-8 pt-8 border-t border-white/5 space-y-2">
+                <p className="px-6 text-[8px] font-black text-slate-500 uppercase tracking-widest mb-2">Configuración Base</p>
+                <button onClick={() => { setIsTemplateMode(!isTemplateMode); setActiveTab('parte'); }} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${isTemplateMode ? 'bg-amber-500 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                    <Database size={20} />
+                    <span className="text-[11px] font-black uppercase tracking-widest">ADN Plantilla</span>
+                </button>
+            </div>
+
+            <div className="pt-8 px-4 mt-auto mb-8">
+                <button onClick={() => { if(window.confirm('BORRAR TODO Y REINICIAR?')) { localStorage.clear(); window.location.reload(); } }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-950/40 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-900/50 transition-all border border-red-900/50"><RefreshCcw size={14} /> Reset Total</button>
             </div>
         </nav>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-20 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-[90] shadow-sm">
+        <header className={`h-20 border-b px-6 flex items-center justify-between shrink-0 z-[90] shadow-sm transition-colors duration-500 ${isTemplateMode ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
           <div className="flex items-center gap-6">
-              <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU OPERATIVO</h1>
-              <div className="flex bg-slate-100 p-1 rounded-xl">
-                {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
-                    <button key={s} onClick={() => setShiftFilter(s)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{s}</button>
-                ))}
-              </div>
+              {isTemplateMode ? (
+                  <div className="flex items-center gap-3 px-4 py-2 bg-amber-500 text-white rounded-2xl shadow-lg animate-pulse">
+                      <ShieldAlert size={20} />
+                      <h1 className="text-sm font-black tracking-tight uppercase">Editando Plantilla Maestra</h1>
+                  </div>
+              ) : (
+                  <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU OPERATIVO</h1>
+              )}
+              
+              {!isTemplateMode && (
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                    {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
+                        <button key={s} onClick={() => setShiftFilter(s)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{s}</button>
+                    ))}
+                </div>
+              )}
           </div>
           
           <div className="flex items-center gap-3 relative z-[100]">
-             <div className="flex items-center border rounded-full px-2 py-1.5 bg-slate-50 border-slate-200">
-                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-white text-slate-400"><ChevronLeft size={18} /></button>
-                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-black text-slate-700 outline-none uppercase cursor-pointer px-2" />
-                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-white text-slate-400"><ChevronRight size={18} /></button>
-             </div>
-             {!isToday && <button onClick={() => setSelectedDate(today)} className="bg-amber-500 text-white p-3 rounded-2xl shadow-lg hover:rotate-[-45deg] transition-all"><RotateCcw size={18} /></button>}
-             
-             <div className="relative ml-2">
-                <button onClick={() => setShowTemplateMenu(!showTemplateMenu)} className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${saveFeedback ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-indigo-400 hover:bg-black'}`}>
-                    {saveFeedback ? <CheckCircle size={18} /> : <FileText size={18} />} Plantilla Maestra <ChevronDown size={14} />
-                </button>
-                {showTemplateMenu && (
-                    <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-[200]">
-                        <button onClick={saveAsMasterTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-indigo-50 rounded-xl text-left transition-colors">
-                            <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Save size={18} /></div>
-                            <div>
-                                <p className="text-[10px] font-black text-slate-800 uppercase">Guardar Maestra</p>
-                                <p className="text-[8px] text-slate-400 uppercase font-bold">Graba este día como base</p>
-                            </div>
-                        </button>
-                        <button onClick={applyMasterTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-amber-50 rounded-xl text-left transition-colors">
-                            <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Wand2 size={18} /></div>
-                            <div>
-                                <p className="text-[10px] font-black text-slate-800 uppercase">Cargar Maestra</p>
-                                <p className="text-[8px] text-slate-400 uppercase font-bold">Aplica base a este día</p>
-                            </div>
-                        </button>
-                    </div>
-                )}
-             </div>
+             {!isTemplateMode && (
+                <div className="flex items-center border rounded-full px-2 py-1.5 bg-white border-slate-200 shadow-sm">
+                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={18} /></button>
+                    <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-sm font-black text-slate-700 outline-none uppercase cursor-pointer px-2" />
+                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-2 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={18} /></button>
+                </div>
+             )}
 
-             <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-5 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg h-12 shrink-0"><CheckCircle2 size={16} /> Cierre</button>
+             {isTemplateMode ? (
+                 <button onClick={() => setIsTemplateMode(false)} className="bg-amber-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-xl h-12 transition-all hover:scale-105">
+                     <CheckCircle size={18} /> Guardar Cambios Base
+                 </button>
+             ) : (
+                <>
+                    {!isToday && <button onClick={() => setSelectedDate(today)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg hover:rotate-[-45deg] transition-all"><RotateCcw size={18} /></button>}
+                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se borrarán los cambios de hoy y se cargará la plantilla base.")) { localStorage.removeItem(`${DATA_KEY_PREFIX}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-slate-400 px-4 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 hover:text-white transition-all">
+                        <Wand2 size={16} /> Resetear Hoy
+                    </button>
+                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white px-5 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg h-12 shrink-0"><CheckCircle2 size={16} /> Cierre</button>
+                </>
+             )}
           </div>
         </header>
 
@@ -437,7 +385,7 @@ const App: React.FC = () => {
             {isLoaded ? (
                 activeTab === 'parte' ? (
                 <div className="h-full flex flex-col">
-                    <div className="bg-white px-6 py-2 border-b border-slate-200 flex items-center justify-between shrink-0 shadow-sm z-40">
+                    <div className={`px-6 py-2 border-b flex items-center justify-between shrink-0 shadow-sm z-40 transition-colors duration-500 ${isTemplateMode ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
                         <div className="flex p-1 bg-slate-100 rounded-xl">
                             <button onClick={() => setSubTab('GENERAL')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'GENERAL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RECOLECCIÓN</button>
                             <button onClick={() => setSubTab('REPASO')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
@@ -448,11 +396,26 @@ const App: React.FC = () => {
                         )}
                     </div>
                     <div className="flex-1 p-4 overflow-hidden">
-                        <div className="h-full bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+                        <div className={`h-full bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col transition-colors duration-500 ${isTemplateMode ? 'border-amber-300' : 'border-slate-200'}`}>
                             {subTab === 'TRANSFERENCIA' ? (
-                                <TransferTable data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
+                                <TransferTable 
+                                    isMasterMode={isTemplateMode}
+                                    data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} 
+                                    onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} 
+                                    onOpenPicker={(id, field, role, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, unitIdx: uIdx })} 
+                                    onUpdateStaff={handleUpdateStaff} 
+                                />
                             ) : (
-                                <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={`TURNO ${shiftFilter}`} selectedDate={selectedDate} />
+                                <ReportTable 
+                                    isMasterMode={isTemplateMode}
+                                    data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} 
+                                    onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} 
+                                    onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} 
+                                    onOpenPicker={(id, field, role) => setPickerState({ type: 'route', targetId: id, field, role })} 
+                                    onUpdateStaff={handleUpdateStaff} 
+                                    activeShiftLabel={isTemplateMode ? `CONFIGURANDO ADN ${shiftFilter}` : `TURNO ${shiftFilter}`} 
+                                    selectedDate={selectedDate} 
+                                />
                             )}
                         </div>
                     </div>

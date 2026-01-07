@@ -2,7 +2,7 @@
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus, AbsenceReason } from '../types';
 import React from 'react';
 import { Trash2, UserCheck, UserX } from 'lucide-react';
-import { getAbsenceStyles } from '../App';
+import { getAbsenceStyles } from '../styles';
 
 interface ReportTableProps {
   data: RouteRecord[];
@@ -12,6 +12,7 @@ interface ReportTableProps {
   onUpdateStaff: (staff: StaffMember) => void;
   activeShiftLabel?: string;
   isMasterMode?: boolean;
+  selectedDate: string;
 }
 
 interface StaffCellProps {
@@ -87,7 +88,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
   );
 };
 
-export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel }) => {
+export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate }) => {
   
   const focusCell = (r: number, c: number) => {
     if (r < 0 || r >= data.length || c < 0 || c > 13) return;
@@ -123,7 +124,8 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
           onUpdateStaff({
               ...s,
               status: StaffStatus.ABSENT,
-              address: AbsenceReason.ARTICULO_95
+              address: AbsenceReason.ARTICULO_95,
+              absenceStartDate: selectedDate
           });
       }
   };

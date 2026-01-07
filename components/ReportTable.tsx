@@ -8,7 +8,7 @@ interface ReportTableProps {
   data: RouteRecord[];
   onUpdateRecord?: (id: string, field: keyof RouteRecord, value: any) => void;
   onDeleteRecord: (id: string) => void;
-  onOpenPicker: (id: string, field: string, role: string) => void;
+  onOpenPicker: (id: string, field: string, role: string, currentValueId?: string) => void;
   onUpdateStaff: (staff: StaffMember) => void;
   activeShiftLabel?: string;
   isMasterMode?: boolean;
@@ -79,9 +79,9 @@ const StaffCell: React.FC<StaffCellProps> = ({
               e.stopPropagation(); 
               onUpdateStatus?.(staff, isAbsent ? StaffStatus.PRESENT : StaffStatus.ABSENT); 
           }}
-          className={`absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 transition-opacity p-1.5 rounded-lg shadow-xl z-10 ${isAbsent ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}
+          className={`absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 transition-opacity p-1.5 rounded-lg shadow-xl z-10 ${isAbsent ? 'bg-emerald-500 text-white' : 'bg-red-600 text-white hover:bg-red-700'}`}
         >
-          {isAbsent ? <UserCheck size={12} /> : <UserX size={12} />}
+          {isAbsent ? <UserCheck size={14} /> : <UserX size={14} />}
         </button>
       )}
     </td>
@@ -124,7 +124,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
           onUpdateStaff({
               ...s,
               status: StaffStatus.ABSENT,
-              address: AbsenceReason.ARTICULO_95,
+              address: 'FALTA', // Motivo genérico solicitado
               absenceStartDate: selectedDate
           });
       }
@@ -168,14 +168,14 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <td data-row={rowIndex} data-col={1} className="border-r border-black p-0">
                     <input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none uppercase" />
                   </td>
-                  <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux1} role="AUX I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux2} role="AUX II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux3} role="AUX III" rowIndex={rowIndex} colIndex={5} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux4} role="AUX IV" rowIndex={rowIndex} colIndex={6} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementDriver} role="REP CHO" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR')} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER', r.driver?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.aux1} role="AUX I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR', r.aux1?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.aux2} role="AUX II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR', r.aux2?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.aux3} role="AUX III" rowIndex={rowIndex} colIndex={5} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR', r.aux3?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.aux4} role="AUX IV" rowIndex={rowIndex} colIndex={6} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR', r.aux4?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.replacementDriver} role="REP CHO" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER', r.replacementDriver?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR', r.replacementAux1?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR', r.replacementAux2?.id)} onUpdateStatus={handleToggleStatus} />
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0">
                     <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
                       <option value={ZoneStatus.PENDING}>PENDIENTE</option>

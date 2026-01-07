@@ -2,7 +2,7 @@
 import React from 'react';
 import { ShiftMetadata, StaffMember, StaffStatus } from '../types';
 import { User, Shield, CheckCircle2 } from 'lucide-react';
-import { getAbsenceStyles } from '../App';
+import { getAbsenceStyles } from '../styles';
 
 interface ComponentProps {
   shift: string;

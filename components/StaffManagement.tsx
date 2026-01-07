@@ -4,7 +4,8 @@ import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from
 import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2, FilterX } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
-import { getAbsenceStyles } from '../App';
+// IMPORTACIÓN CORREGIDA PARA VERCEL:
+import { getAbsenceStyles } from '../styles';
 import * as XLSX from 'xlsx';
 
 interface StaffManagementProps {
@@ -172,7 +173,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
-      {/* TARJETAS PRINCIPALES */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard label="TOTAL" value={stats.total} icon={<Users size={28} />} color="indigo" />
         <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={28} />} color="emerald" />
@@ -180,7 +180,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={28} />} color="red" />
       </div>
 
-      {/* DESGLOSE DE FALTAS POR MOTIVO */}
       {absenceBreakdown.length > 0 && (
         <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 animate-in slide-in-from-top-4">
             <div className="flex items-center gap-4 mb-4">
@@ -210,7 +209,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         </div>
       )}
 
-      {/* BARRA DE HERRAMIENTAS */}
       <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-6">
         <div className="flex flex-col lg:flex-row items-center gap-6 w-full xl:w-auto">
             <div className="flex items-center gap-4 shrink-0">

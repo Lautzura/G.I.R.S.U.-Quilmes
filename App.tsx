@@ -30,7 +30,10 @@ import {
     RefreshCcw,
     RotateCcw,
     Save,
-    CheckCircle
+    CheckCircle,
+    Layout,
+    ChevronDown,
+    Wand2
 } from 'lucide-react';
 
 const DATA_KEY_PREFIX = 'girsu_diario_v15_';
@@ -39,37 +42,36 @@ const STAFF_STORAGE_KEY = 'master_staff_v15';
 const TEMPLATE_ROUTES_KEY = 'girsu_template_routes_v15';
 const TEMPLATE_TRANS_KEY = 'girsu_template_trans_v15';
 
-// COLORES DE ALTO CONTRASTE PARA VISIBILIDAD MÁXIMA
+// COLORES DE ALTO CONTRASTE (SUPER OSCUROS PARA TEXTO BLANCO)
 export const getAbsenceStyles = (reason: string) => {
     const r = reason?.toUpperCase() || '';
-    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) return 'bg-red-700 text-white border-red-900 shadow-md font-black';
-    if (r.includes('VACACIONES')) return 'bg-amber-600 text-white border-amber-800 shadow-md font-black';
-    if (r.includes('MEDICA') || r.includes('ART')) return 'bg-blue-700 text-white border-blue-900 shadow-md font-black';
-    if (r.includes('LICENCIA')) return 'bg-indigo-700 text-white border-indigo-900 shadow-md font-black';
-    return 'bg-slate-700 text-white border-slate-900 font-black';
+    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) return 'bg-red-900 text-white border-red-950 shadow-md font-black';
+    if (r.includes('VACACIONES')) return 'bg-amber-700 text-white border-amber-900 shadow-md font-black';
+    if (r.includes('MEDICA') || r.includes('ART')) return 'bg-blue-900 text-white border-blue-950 shadow-md font-black';
+    if (r.includes('LICENCIA')) return 'bg-indigo-900 text-white border-indigo-950 shadow-md font-black';
+    return 'bg-slate-800 text-white border-slate-950 font-black';
 };
 
 const REASON_COLORS: Record<string, string> = {
-    [AbsenceReason.ART]: 'bg-blue-700 text-white',
-    [AbsenceReason.VACACIONES]: 'bg-amber-600 text-white',
-    [AbsenceReason.LICENCIA_MEDICA]: 'bg-blue-800 text-white',
-    [AbsenceReason.SUSPENSION]: 'bg-red-800 text-white',
-    [AbsenceReason.RESERVA]: 'bg-slate-600 text-white',
-    [AbsenceReason.ARTICULO_95]: 'bg-red-700 text-white',
-    [AbsenceReason.DIA_EXAMEN]: 'bg-indigo-600 text-white',
-    [AbsenceReason.DIA_PREEXAMEN]: 'bg-indigo-600 text-white',
-    [AbsenceReason.NACIMIENTO]: 'bg-pink-700 text-white',
-    [AbsenceReason.CASAMIENTO]: 'bg-pink-700 text-white',
-    [AbsenceReason.DUELO]: 'bg-slate-900 text-white',
-    [AbsenceReason.DONACION_SANGRE]: 'bg-red-600 text-white',
-    [AbsenceReason.LICENCIA_GREMIAL]: 'bg-purple-700 text-white',
-    [AbsenceReason.ASISTENCIA_FAMILIAR]: 'bg-emerald-700 text-white',
+    [AbsenceReason.ART]: 'bg-blue-900 text-white',
+    [AbsenceReason.VACACIONES]: 'bg-amber-700 text-white',
+    [AbsenceReason.LICENCIA_MEDICA]: 'bg-blue-950 text-white',
+    [AbsenceReason.SUSPENSION]: 'bg-red-900 text-white',
+    [AbsenceReason.RESERVA]: 'bg-slate-700 text-white',
+    [AbsenceReason.ARTICULO_95]: 'bg-red-950 text-white',
+    [AbsenceReason.DIA_EXAMEN]: 'bg-indigo-800 text-white',
+    [AbsenceReason.DIA_PREEXAMEN]: 'bg-indigo-800 text-white',
+    [AbsenceReason.NACIMIENTO]: 'bg-pink-900 text-white',
+    [AbsenceReason.CASAMIENTO]: 'bg-pink-900 text-white',
+    [AbsenceReason.DUELO]: 'bg-black text-white',
+    [AbsenceReason.DONACION_SANGRE]: 'bg-red-700 text-white',
+    [AbsenceReason.LICENCIA_GREMIAL]: 'bg-purple-900 text-white',
+    [AbsenceReason.ASISTENCIA_FAMILIAR]: 'bg-emerald-900 text-white',
 };
 
 const resolveStaffStatus = (member: StaffMember, dateStr: string): StaffMember => {
     if (!member.absenceStartDate) return { ...member, status: StaffStatus.PRESENT, address: '' };
     
-    // Normalizar fechas para comparación (mediodía para evitar errores de zona horaria)
     const current = new Date(dateStr + 'T12:00:00').getTime();
     const start = new Date(member.absenceStartDate + 'T12:00:00').getTime();
     
@@ -115,6 +117,7 @@ const App: React.FC = () => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState(false);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
 
   const isToday = selectedDate === today;
 
@@ -144,11 +147,7 @@ const App: React.FC = () => {
     } else {
         const savedTemplate = localStorage.getItem(TEMPLATE_ROUTES_KEY);
         if (savedTemplate) {
-            rawRoutes = JSON.parse(savedTemplate).map((r: any) => ({
-                ...r,
-                id: `${r.zone}-${r.shift}-${Date.now()}-${Math.random()}`,
-                departureTime: '', dumpTime: '', tonnage: '', zoneStatus: ZoneStatus.PENDING, supervisionReport: ''
-            }));
+            rawRoutes = JSON.parse(savedTemplate);
         } else {
             const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
             rawRoutes = [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
@@ -175,11 +174,7 @@ const App: React.FC = () => {
     } else {
         const savedTransTemplate = localStorage.getItem(TEMPLATE_TRANS_KEY);
         if (savedTransTemplate) {
-            rawTrans = JSON.parse(savedTransTemplate).map((tr: any) => ({
-                ...tr,
-                id: `TR-${tr.shift}-${Date.now()}`,
-                observaciones: ''
-            }));
+            rawTrans = JSON.parse(savedTransTemplate);
         } else {
             const createInitTr = (s: any): TransferRecord => ({ id: `TR-${s}-${Date.now()}`, shift: s, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
             rawTrans = [createInitTr('MAÑANA'), createInitTr('TARDE'), createInitTr('NOCHE')];
@@ -268,7 +263,7 @@ const App: React.FC = () => {
   };
 
   const saveCurrentAsTemplate = () => {
-    if (!window.confirm("¿GUARDAR ESTE PERSONAL COMO PLANTILLA MAESTRA?")) return;
+    if (!window.confirm("¿GUARDAR ESTE PERSONAL ACTUAL COMO LA NUEVA PLANTILLA MAESTRA?")) return;
     
     const routesToSave = records.map(r => ({
         ...r,
@@ -297,6 +292,7 @@ const App: React.FC = () => {
     localStorage.setItem(TEMPLATE_ROUTES_KEY, JSON.stringify(routesToSave));
     localStorage.setItem(TEMPLATE_TRANS_KEY, JSON.stringify(transToSave));   
 
+    setShowTemplateMenu(false);
     setSaveFeedback(true);
     setTimeout(() => setSaveFeedback(false), 2000);
   };
@@ -306,11 +302,11 @@ const App: React.FC = () => {
     const savedTransTemplate = localStorage.getItem(TEMPLATE_TRANS_KEY);
 
     if (!savedTemplate) {
-        alert("No hay ninguna plantilla guardada");
+        alert("Primero debes guardar una plantilla");
         return;
     }
 
-    if (!window.confirm("¿APLICAR LA PLANTILLA MAESTRA AL DÍA ACTUAL?")) return;
+    if (!window.confirm("¿RESTABLECER TODO EL PERSONAL DESDE LA PLANTILLA MAESTRA? (Se perderán cambios manuales de hoy)")) return;
 
     const routesTemplate = JSON.parse(savedTemplate);
     const transTemplate = savedTransTemplate ? JSON.parse(savedTransTemplate) : [];
@@ -350,7 +346,7 @@ const App: React.FC = () => {
 
     setRecords(updatedRoutes);
     setTransferRecords(updatedTrans);
-    alert("Plantilla aplicada con éxito.");
+    setShowTemplateMenu(false);
   };
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
@@ -422,25 +418,42 @@ const App: React.FC = () => {
 
              <div className="h-10 w-px bg-slate-200 mx-2"></div>
 
-             <div className="flex items-center gap-2">           
-                <button
-                    onClick={applyTemplate}
-                    title="Aplicar plantilla maestra"
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 bg-amber-500 text-white hover:bg-amber-600"
-                >
-                    <RotateCcw size={26} strokeWidth={3} />
-                </button>
-                <button 
-                    onClick={saveCurrentAsTemplate} 
-                    title="Guardar como Plantilla"
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-md active:scale-90 ${saveFeedback ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-indigo-400 hover:bg-black'}`}
-                >
-                    {saveFeedback ? <CheckCircle size={28} strokeWidth={3} className="animate-in zoom-in" /> : <Save size={26} strokeWidth={3} />}
-                </button>
+             <div className="flex items-center gap-3">
+                <div className="relative">
+                    <button 
+                        onClick={() => setShowTemplateMenu(!showTemplateMenu)}
+                        className={`flex items-center gap-2 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${saveFeedback ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-indigo-400 hover:bg-black'}`}
+                    >
+                        {saveFeedback ? <CheckCircle size={18} /> : <Layout size={18} />}
+                        Plantillas
+                        <ChevronDown size={14} className={`transition-transform ${showTemplateMenu ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {showTemplateMenu && (
+                        <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2 z-[200] animate-in slide-in-from-top-2">
+                            <button onClick={saveCurrentAsTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-indigo-50 rounded-xl transition-all text-left">
+                                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Save size={18} /></div>
+                                <div>
+                                    <p className="text-[10px] font-black text-slate-800 uppercase">Guardar actual</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Define como base maestra</p>
+                                </div>
+                            </button>
+                            <div className="h-px bg-slate-100 my-1"></div>
+                            <button onClick={applyTemplate} className="w-full flex items-center gap-3 px-4 py-4 hover:bg-amber-50 rounded-xl transition-all text-left">
+                                <div className="p-2 bg-amber-100 text-amber-600 rounded-lg"><Wand2 size={18} /></div>
+                                <div>
+                                    <p className="text-[10px] font-black text-slate-800 uppercase">Cargar maestra</p>
+                                    <p className="text-[8px] font-bold text-slate-400 uppercase">Aplica personal fijo</p>
+                                </div>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 <button 
                     onClick={() => setIsNewRouteModalOpen(true)} 
                     title="Añadir Nueva Ruta"
-                    className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center hover:bg-indigo-700 shadow-md active:scale-90 transition-all"
+                    className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center hover:bg-indigo-700 shadow-md active:scale-90 transition-all shrink-0"
                 >
                     <Plus size={34} strokeWidth={4} />
                 </button>

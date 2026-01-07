@@ -33,7 +33,8 @@ import {
     CheckCircle,
     Layout,
     ChevronDown,
-    Wand2
+    Wand2,
+    FilterX
 } from 'lucide-react';
 
 const DATA_KEY_PREFIX = 'girsu_diario_v15_';
@@ -139,6 +140,12 @@ const App: React.FC = () => {
     const resolvedStaff = uniqueStaff.map(s => resolveStaffStatus(s, selectedDate));
     setStaffList(resolvedStaff);
 
+    const findS = (m: any) => {
+        if (!m) return null;
+        const idToFind = String(typeof m === 'string' ? m : m.id).trim();
+        return resolvedStaff.find(s => String(s.id).trim() === idToFind) || null;
+    };
+
     const savedDayData = localStorage.getItem(dateKey);
     let rawRoutes: any[] = [];
     
@@ -153,12 +160,6 @@ const App: React.FC = () => {
             rawRoutes = [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
         }
     }
-
-    const findS = (m: any) => {
-        if (!m) return null;
-        const id = typeof m === 'string' ? m : m.id;
-        return resolvedStaff.find(s => String(s.id).trim() === String(id).trim()) || null;
-    };
 
     setRecords(rawRoutes.map(r => ({ 
         ...r, 

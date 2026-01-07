@@ -39,44 +39,50 @@ const STAFF_STORAGE_KEY = 'master_staff_v15';
 const TEMPLATE_ROUTES_KEY = 'girsu_template_routes_v15';
 const TEMPLATE_TRANS_KEY = 'girsu_template_trans_v15';
 
+// COLORES DE ALTO CONTRASTE PARA VISIBILIDAD MÁXIMA
 export const getAbsenceStyles = (reason: string) => {
     const r = reason?.toUpperCase() || '';
-    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('ART')) return 'bg-red-600 text-white border-red-700 shadow-inner';
-    if (r.includes('VACACIONES')) return 'bg-emerald-600 text-white border-emerald-700';
-    if (r.includes('MEDICA')) return 'bg-orange-500 text-white border-orange-600';
-    return 'bg-red-50 text-red-600 border-red-200';
+    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) return 'bg-red-700 text-white border-red-900 shadow-md font-black';
+    if (r.includes('VACACIONES')) return 'bg-amber-600 text-white border-amber-800 shadow-md font-black';
+    if (r.includes('MEDICA') || r.includes('ART')) return 'bg-blue-700 text-white border-blue-900 shadow-md font-black';
+    if (r.includes('LICENCIA')) return 'bg-indigo-700 text-white border-indigo-900 shadow-md font-black';
+    return 'bg-slate-700 text-white border-slate-900 font-black';
 };
 
 const REASON_COLORS: Record<string, string> = {
-    [AbsenceReason.ART]: 'bg-[#D1FAE5] text-[#065F46]',
-    [AbsenceReason.VACACIONES]: 'bg-[#FEF3C7] text-[#92400E]',
-    [AbsenceReason.LICENCIA_MEDICA]: 'bg-[#D1FAE5] text-[#065F46]',
-    [AbsenceReason.SUSPENSION]: 'bg-[#FEE2E2] text-[#991B1B]',
-    [AbsenceReason.RESERVA]: 'bg-[#FEF3C7] text-[#92400E]',
-    [AbsenceReason.ARTICULO_95]: 'bg-[#D1FAE5] text-[#065F46]',
-    [AbsenceReason.DIA_EXAMEN]: 'bg-[#DBEAFE] text-[#1E40AF]',
-    [AbsenceReason.DIA_PREEXAMEN]: 'bg-[#DBEAFE] text-[#1E40AF]',
-    [AbsenceReason.NACIMIENTO]: 'bg-[#FCE7F3] text-[#9D174D]',
-    [AbsenceReason.CASAMIENTO]: 'bg-[#FCE7F3] text-[#9D174D]',
-    [AbsenceReason.DUELO]: 'bg-[#E0E7FF] text-[#3730A3]',
-    [AbsenceReason.DONACION_SANGRE]: 'bg-[#DBEAFE] text-[#1E40AF]',
-    [AbsenceReason.LICENCIA_GREMIAL]: 'bg-[#E0E7FF] text-[#3730A3]',
-    [AbsenceReason.ASISTENCIA_FAMILIAR]: 'bg-[#E0E7FF] text-[#3730A3]',
+    [AbsenceReason.ART]: 'bg-blue-700 text-white',
+    [AbsenceReason.VACACIONES]: 'bg-amber-600 text-white',
+    [AbsenceReason.LICENCIA_MEDICA]: 'bg-blue-800 text-white',
+    [AbsenceReason.SUSPENSION]: 'bg-red-800 text-white',
+    [AbsenceReason.RESERVA]: 'bg-slate-600 text-white',
+    [AbsenceReason.ARTICULO_95]: 'bg-red-700 text-white',
+    [AbsenceReason.DIA_EXAMEN]: 'bg-indigo-600 text-white',
+    [AbsenceReason.DIA_PREEXAMEN]: 'bg-indigo-600 text-white',
+    [AbsenceReason.NACIMIENTO]: 'bg-pink-700 text-white',
+    [AbsenceReason.CASAMIENTO]: 'bg-pink-700 text-white',
+    [AbsenceReason.DUELO]: 'bg-slate-900 text-white',
+    [AbsenceReason.DONACION_SANGRE]: 'bg-red-600 text-white',
+    [AbsenceReason.LICENCIA_GREMIAL]: 'bg-purple-700 text-white',
+    [AbsenceReason.ASISTENCIA_FAMILIAR]: 'bg-emerald-700 text-white',
 };
 
 const resolveStaffStatus = (member: StaffMember, dateStr: string): StaffMember => {
     if (!member.absenceStartDate) return { ...member, status: StaffStatus.PRESENT, address: '' };
-    const current = new Date(dateStr + 'T12:00:00');
-    const start = new Date(member.absenceStartDate + 'T12:00:00');
+    
+    // Normalizar fechas para comparación (mediodía para evitar errores de zona horaria)
+    const current = new Date(dateStr + 'T12:00:00').getTime();
+    const start = new Date(member.absenceStartDate + 'T12:00:00').getTime();
+    
     let shouldBeAbsent = false;
     if (member.isIndefiniteAbsence) {
         shouldBeAbsent = current >= start;
     } else if (member.absenceReturnDate) {
-        const end = new Date(member.absenceReturnDate + 'T12:00:00');
+        const end = new Date(member.absenceReturnDate + 'T12:00:00').getTime();
         shouldBeAbsent = current >= start && current <= end;
     } else {
         shouldBeAbsent = dateStr === member.absenceStartDate;
     }
+    
     if (shouldBeAbsent) return { ...member, status: StaffStatus.ABSENT };
     return { ...member, status: StaffStatus.PRESENT, address: '' };
 };
@@ -496,7 +502,7 @@ const App: React.FC = () => {
                         <div key={s.id} className={`p-6 rounded-[2rem] border-2 transition-all flex flex-col ${isCurrent ? 'border-indigo-600 bg-white shadow-xl ring-4 ring-indigo-50' : 'border-white bg-white shadow-sm'}`}>
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-5 flex-1">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${isAbsent ? 'bg-red-50 text-red-600' : isCurrent ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${isAbsent ? getAbsenceStyles(s.address || 'FALTA') : isCurrent ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
                                     <div onClick={() => !isAbsent && handlePickerSelection(s)} className="cursor-pointer">
                                         <h4 className="text-[13px] font-black uppercase text-slate-800 leading-none">{s.name}</h4>
                                         <p className="text-[10px] font-bold text-slate-400 mt-2 uppercase">LEGAJO: {s.id} {isAbsent && `(${s.address || 'FALTA'})`}</p>

@@ -35,19 +35,45 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
 
   const navigateTolva = (e: React.KeyboardEvent, rowId: string, uIdx: number, field: string) => {
     const { key } = e;
+    const target = e.target as HTMLInputElement;
+    const fields = ['dom1', 'dom2', 't0h', 't0n', 't1h', 't1n', 't2h', 't2n'];
+    const currentFieldIdx = fields.indexOf(field);
+
     const isEnter = key === 'Enter';
     const isUp = key === 'ArrowUp';
     const isDown = key === 'ArrowDown';
+    const isLeft = key === 'ArrowLeft';
+    const isRight = key === 'ArrowRight';
 
     if (isEnter || isDown || isUp) {
         e.preventDefault();
         const nextIdx = isUp ? uIdx - 1 : uIdx + 1;
         if (nextIdx >= 0 && nextIdx < 3) {
             const container = document.querySelector(`[data-row-id="${rowId}"]`);
-            const target = container?.querySelector(`[data-unit="${nextIdx}"][data-field="${field}"]`) as HTMLInputElement;
-            if (target) {
-                target.focus();
-                target.select();
+            const targetEl = container?.querySelector(`[data-unit="${nextIdx}"][data-field="${field}"]`) as HTMLInputElement;
+            if (targetEl) {
+                targetEl.focus();
+                targetEl.select();
+            }
+        }
+    } else if (isLeft && (target.selectionStart === 0)) {
+        if (currentFieldIdx > 0) {
+            e.preventDefault();
+            const container = document.querySelector(`[data-row-id="${rowId}"]`);
+            const targetEl = container?.querySelector(`[data-unit="${uIdx}"][data-field="${fields[currentFieldIdx - 1]}"]`) as HTMLInputElement;
+            if (targetEl) {
+                targetEl.focus();
+                targetEl.select();
+            }
+        }
+    } else if (isRight && (target.selectionEnd === target.value.length)) {
+        if (currentFieldIdx < fields.length - 1) {
+            e.preventDefault();
+            const container = document.querySelector(`[data-row-id="${rowId}"]`);
+            const targetEl = container?.querySelector(`[data-unit="${uIdx}"][data-field="${fields[currentFieldIdx + 1]}"]`) as HTMLInputElement;
+            if (targetEl) {
+                targetEl.focus();
+                targetEl.select();
             }
         }
     }

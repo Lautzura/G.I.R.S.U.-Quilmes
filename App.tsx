@@ -44,7 +44,7 @@ const DAILY_DATA_KEY = `${DB_PREFIX}day_`;
 const DAILY_TRANS_KEY = `${DB_PREFIX}trans_`;
 const DAILY_MGRS_KEY = `${DB_PREFIX}mgrs_`;
 
-// Utilidad para asegurar que no haya duplicados por ID
+// Utilidad crítica para asegurar que no haya duplicados por ID (Legajo)
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   const seen = new Set();
   return list.filter(s => {
@@ -83,7 +83,7 @@ const App: React.FC = () => {
   useEffect(() => {
     setIsLoaded(false);
     const savedStaff = localStorage.getItem(STAFF_KEY);
-    // Limpiamos duplicados al cargar
+    // Limpiamos duplicados agresivamente al cargar
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
     
@@ -226,40 +226,40 @@ const App: React.FC = () => {
     setPickerState(null);
   };
 
-  // ALGORITMO DE BÚSQUEDA OPTIMIZADO
+  // ALGORITMO DE BÚSQUEDA OPTIMIZADO CON RANKING
   const sortedPickerList = useMemo(() => {
       const search = pickerSearch.trim().toLowerCase();
       
-      // 1. Filtramos duplicados y aplicamos búsqueda básica
+      // Filtramos por nombre o legajo
       let filtered = staffList.filter(s => 
           s.name.toLowerCase().includes(search) || 
-          s.id.includes(search)
+          s.id.toLowerCase().includes(search)
       );
       
-      // 2. Aplicamos ranking de relevancia
+      // Aplicamos ranking de relevancia
       return filtered.sort((a, b) => {
           const isASelected = a.id === pickerState?.currentValueId;
           const isBSelected = b.id === pickerState?.currentValueId;
           
-          // Prioridad 1: El actualmente asignado siempre arriba
+          // 1. El actualmente asignado siempre arriba de todo
           if (isASelected && !isBSelected) return -1;
           if (!isASelected && isBSelected) return 1;
 
-          // Prioridad 2: Coincidencia exacta de Legajo
-          const isAExactLegajo = a.id === search;
-          const isBExactLegajo = b.id === search;
+          // 2. Coincidencia EXACTA de Legajo
+          const isAExactLegajo = a.id.toLowerCase() === search;
+          const isBExactLegajo = b.id.toLowerCase() === search;
           if (isAExactLegajo && !isBExactLegajo) return -1;
           if (!isAExactLegajo && isBExactLegajo) return 1;
 
-          // Prioridad 3: Nombre que EMPIEZA con la búsqueda
+          // 3. Nombre que EMPIEZA con la búsqueda
           const isAStartsWith = a.name.toLowerCase().startsWith(search);
           const isBStartsWith = b.name.toLowerCase().startsWith(search);
           if (isAStartsWith && !isBStartsWith) return -1;
           if (!isAStartsWith && isBStartsWith) return 1;
 
-          // Prioridad 4: Orden alfabético por defecto
+          // 4. Orden alfabético para el resto
           return a.name.localeCompare(b.name);
-      }).slice(0, 50); // Limitamos a 50 resultados para rendimiento
+      }).slice(0, 40); // Limitamos resultados para rendimiento fluido
   }, [staffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
@@ -377,7 +377,7 @@ const App: React.FC = () => {
                 <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
                     <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Vaciar Casilla</button>
                     <div className="relative flex-1 group">
-                        <input autoFocus type="text" placeholder="ESCRIBA LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
+                        <input autoFocus type="text" placeholder="BUSCAR POR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">

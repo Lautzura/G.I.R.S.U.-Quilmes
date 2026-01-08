@@ -77,6 +77,27 @@ const App: React.FC = () => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
+  // Funciones auxiliares para crear registros vacíos
+  const createEmptyTrans = useCallback((s: string): TransferRecord => ({ 
+    id: `TR-${s}`, 
+    shift: s as any, 
+    units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, 
+    maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' 
+  }), []);
+
+  const getInitialRecordsFromConstants = useCallback((list: StaffMember[]) => {
+    const findS = (id: any) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
+    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findS(m.driver), aux1: findS(m.aux1), aux2: findS(m.aux2), aux3: findS(m.aux3), aux4: findS(m.aux4), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
+    return [
+        ...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), 
+        ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), 
+        ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), 
+        ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), 
+        ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), 
+        ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')
+    ];
+  }, []);
+
   useEffect(() => {
     setIsLoaded(false);
     const savedStaff = localStorage.getItem(STAFF_KEY);
@@ -85,46 +106,79 @@ const App: React.FC = () => {
     
     const findS = (id: any, list: StaffMember[]) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
 
+    // --- LOGICA DE CARGA ---
     if (activeTab === 'adn') {
         const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
         const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
+        
         if (adnRoutes) setRecords(JSON.parse(adnRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff) })));
-        else initializeFromConstants(initialStaff);
+        else setRecords(getInitialRecordsFromConstants(initialStaff));
+        
         if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
         else setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+        
         if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
     } else {
+        // Estamos en el Parte Diario
         const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
+        const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
+        const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
+
         if (dayRoutes) {
+            // Existe información específica guardada para este día
             setRecords(JSON.parse(dayRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff), replacementDriver: findS(r.replacementDriver, initialStaff), replacementAux1: findS(r.replacementAux1, initialStaff), replacementAux2: findS(r.replacementAux2, initialStaff) })));
-            const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
             if (dayTrans) setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
-            const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
         } else {
-            initializeFromConstants(initialStaff);
+            // DIA NUEVO: Intentamos cargar desde el ADN Maestro automáticamente
+            const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
+            const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
+            const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
+
+            if (adnRoutes) {
+                // Copiamos el ADN al día nuevo
+                setRecords(JSON.parse(adnRoutes).map((r: any) => ({ 
+                    ...r, 
+                    id: `${r.zone}-${selectedDate}-${Math.random()}`, 
+                    driver: findS(r.driver, initialStaff), 
+                    aux1: findS(r.aux1, initialStaff), 
+                    aux2: findS(r.aux2, initialStaff), 
+                    aux3: findS(r.aux3, initialStaff), 
+                    aux4: findS(r.aux4, initialStaff), 
+                    zoneStatus: ZoneStatus.PENDING, 
+                    tonnage: '', 
+                    departureTime: '' 
+                })));
+                
+                if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ 
+                    ...tr, 
+                    id: `TR-${tr.shift}-${selectedDate}`, 
+                    maquinista: findS(tr.maquinista, initialStaff), 
+                    encargado: findS(tr.encargado, initialStaff), 
+                    balancero1: findS(tr.balancero1, initialStaff), 
+                    auxTolva1: findS(tr.auxTolva1, initialStaff), 
+                    auxTolva2: findS(tr.auxTolva2, initialStaff), 
+                    units: tr.units.map((u:any) => ({ 
+                        ...u, 
+                        driver: findS(u.driver, initialStaff), 
+                        trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] 
+                    })) 
+                })));
+                
+                if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
+            } else {
+                // Si no hay ADN, usamos las constantes
+                setRecords(getInitialRecordsFromConstants(initialStaff));
+                setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+            }
         }
     }
     setIsLoaded(true);
-  }, [selectedDate, activeTab]);
-
-  const createEmptyTrans = (s: string): TransferRecord => ({ id: `TR-${s}`, shift: s as any, units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' });
-
-  const initializeFromConstants = (list: StaffMember[]) => {
-    const findS = (id: any) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
-    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findS(m.driver), aux1: findS(m.aux1), aux2: findS(m.aux2), aux3: findS(m.aux3), aux4: findS(m.aux4), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
-    setRecords([...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')]);
-    setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
-    setShiftManagers({
-      MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
-      TARDE: { supervisor: '', subSupervisor: '', absences: [] },
-      NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
-    });
-  };
+  }, [selectedDate, activeTab, createEmptyTrans, getInitialRecordsFromConstants]);
 
   const handleLoadFromADN = () => {
-    if (!window.confirm('¿Desea cargar la plantilla ADN Maestro para el día seleccionado? Se perderán los cambios actuales.')) return;
+    if (!window.confirm('¿Desea forzar la carga de la plantilla ADN Maestro para este día? Se perderán los cambios actuales.')) return;
     
     const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
     const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
@@ -263,7 +317,7 @@ const App: React.FC = () => {
                         <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1.5 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={14} /></button>
                         {selectedDate !== today && <button onClick={() => setSelectedDate(today)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:text-indigo-600 transition-all ml-1 shadow-sm"><RotateCcw size={14} /></button>}
                     </div>
-                    <button onClick={handleLoadFromADN} className="bg-indigo-50 text-indigo-600 p-3 rounded-2xl border border-indigo-100 shadow-sm hover:bg-indigo-100 transition-all group" title="Cargar Plantilla ADN"><Wand2 size={18} className="group-hover:rotate-12 transition-transform" /></button>
+                    <button onClick={handleLoadFromADN} className="bg-indigo-50 text-indigo-600 p-3 rounded-2xl border border-indigo-100 shadow-sm hover:bg-indigo-100 transition-all group" title="Forzar Carga ADN"><Wand2 size={18} className="group-hover:rotate-12 transition-transform" /></button>
                     <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all"><Database size={18} /></button>
                     <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md"><Plus size={18} /></button>
                     <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md"><CheckCircle2 size={18} /></button>

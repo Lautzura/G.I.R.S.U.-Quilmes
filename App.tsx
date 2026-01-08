@@ -7,7 +7,6 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-import { GeminiInsight } from './components/GeminiInsight';
 import { getAbsenceStyles } from './styles';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
@@ -29,7 +28,6 @@ import {
     ShieldAlert,
     Wand2,
     Copy,
-    Sparkles,
     X,
     Check,
     UserCircle
@@ -62,7 +60,6 @@ const App: React.FC = () => {
   const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA'>('GENERAL');
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showInsight, setShowInsight] = useState(false);
   
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
@@ -260,7 +257,6 @@ const App: React.FC = () => {
                         {selectedDate !== today && <button onClick={() => setSelectedDate(today)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:text-indigo-600 transition-all ml-1 shadow-sm"><RotateCcw size={14} /></button>}
                     </div>
                     <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all"><Database size={18} /></button>
-                    <button onClick={() => setShowInsight(!showInsight)} className={`p-3 rounded-2xl shadow-md transition-all ${showInsight ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600'}`}><Sparkles size={18} /></button>
                     <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md"><Plus size={18} /></button>
                     <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md"><CheckCircle2 size={18} /></button>
                 </div>
@@ -283,7 +279,6 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
-                        {showInsight && <GeminiInsight data={records} />}
                         <div className="flex-1 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
                             {subTab === 'TRANSFERENCIA' ? (
                                 <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
@@ -315,7 +310,7 @@ const App: React.FC = () => {
                 <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
                     <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Vaciar Casilla</button>
                     <div className="relative flex-1 group">
-                        <input autoFocus type="text" placeholder="BUSCAR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
+                        <input autoFocus type="text" placeholder="BUSCAR LEGAJO OR NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">

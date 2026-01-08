@@ -1,6 +1,6 @@
 
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus, AbsenceReason } from '../types';
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Trash2, UserCheck, UserX } from 'lucide-react';
 import { getAbsenceStyles } from '../styles';
 
@@ -91,9 +91,19 @@ const StaffCell: React.FC<StaffCellProps> = ({
 
 export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate }) => {
   
+  // Mapa de historial para autocompletar dominios
+  const domainHistory = useMemo(() => {
+    const history: Record<string, string> = {};
+    data.forEach(r => {
+      if (r.internalId && r.domain) {
+        history[r.internalId] = r.domain;
+      }
+    });
+    return history;
+  }, [data]);
+
   const focusCell = (r: number, c: number) => {
     if (r < 0 || r >= data.length) return;
-    // Limit columns between 0 and 13
     const safeC = Math.max(0, Math.min(c, 13));
     const el = document.querySelector(`[data-row="${r}"][data-col="${safeC}"]`) as HTMLElement;
     if (el) {
@@ -124,14 +134,12 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
       focusCell(rIdx + 1, cIdx); 
     }
     else if (key === 'ArrowLeft') {
-      // Move left if at start of input or if it's a select
       if (!(target instanceof HTMLInputElement) || target.selectionStart === 0) {
         e.preventDefault();
         focusCell(rIdx, cIdx - 1);
       }
     }
     else if (key === 'ArrowRight') {
-      // Move right if at end of input or if it's a select
       if (!(target instanceof HTMLInputElement) || target.selectionEnd === target.value.length) {
         e.preventDefault();
         focusCell(rIdx, cIdx + 1);
@@ -192,7 +200,20 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                 <tr key={r.id} className="h-10 hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 z-20 font-black border-r border-black text-center bg-slate-100 uppercase text-slate-900 px-2">{r.zone}</td>
                   <td data-row={rowIndex} data-col={0} className="border-r border-black p-0">
-                    <input type="text" value={r.internalId || ''} onChange={e => onUpdateRecord?.(r.id, 'internalId', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} className="w-full h-full bg-transparent text-center font-black outline-none border-none" />
+                    <input 
+                      type="text" 
+                      value={r.internalId || ''} 
+                      onChange={e => {
+                        const val = e.target.value;
+                        onUpdateRecord?.(r.id, 'internalId', val);
+                        // Sugerir dominio si existe en el historial
+                        if (domainHistory[val] && !r.domain) {
+                          onUpdateRecord?.(r.id, 'domain', domainHistory[val]);
+                        }
+                      }} 
+                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} 
+                      className="w-full h-full bg-transparent text-center font-black outline-none border-none" 
+                    />
                   </td>
                   <td data-row={rowIndex} data-col={1} className="border-r border-black p-0">
                     <input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none uppercase" />

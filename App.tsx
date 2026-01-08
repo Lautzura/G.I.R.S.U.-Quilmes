@@ -48,6 +48,7 @@ const DAILY_MGRS_KEY = `${DB_PREFIX}mgrs_`;
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   const seen = new Set();
   return list.filter(s => {
+    if (!s || !s.id) return false;
     const id = String(s.id).trim();
     if (!id || seen.has(id)) return false;
     seen.add(id);
@@ -83,7 +84,6 @@ const App: React.FC = () => {
   useEffect(() => {
     setIsLoaded(false);
     const savedStaff = localStorage.getItem(STAFF_KEY);
-    // Limpiamos duplicados agresivamente al cargar
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
     
@@ -146,38 +146,6 @@ const App: React.FC = () => {
     } catch (e) {}
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, activeTab]);
 
-  const handleClonePreviousDay = useCallback(() => {
-    const d = new Date(selectedDate + 'T12:00:00');
-    d.setDate(d.getDate() - 1);
-    const prevDate = d.toISOString().split('T')[0];
-    const prevData = localStorage.getItem(`${DAILY_DATA_KEY}${prevDate}`);
-    
-    if (!prevData) {
-        alert("No hay datos del día anterior para clonar.");
-        return;
-    }
-
-    if (window.confirm(`¿Clonar personal y vehículos del día ${prevDate}?`)) {
-        const parsedPrev = JSON.parse(prevData);
-        const findS = (id: any) => staffList.find(s => String(s.id).trim() === String(id || '').trim()) || null;
-
-        setRecords(prev => prev.map(current => {
-            const matched = parsedPrev.find((p: any) => p.zone === current.zone && p.shift === current.shift);
-            if (!matched) return current;
-            return {
-                ...current,
-                internalId: matched.internalId || '',
-                domain: matched.domain || '',
-                driver: findS(matched.driver),
-                aux1: findS(matched.aux1),
-                aux2: findS(matched.aux2),
-                aux3: findS(matched.aux3),
-                aux4: findS(matched.aux4)
-            };
-        }));
-    }
-  }, [selectedDate, staffList]);
-
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
     const idToFind = String(originalId || updatedMember.id).trim();
     setStaffList(prev => deduplicateStaff(prev.map(s => String(s.id).trim() === idToFind ? updatedMember : s)));
@@ -226,40 +194,31 @@ const App: React.FC = () => {
     setPickerState(null);
   };
 
-  // ALGORITMO DE BÚSQUEDA OPTIMIZADO CON RANKING
   const sortedPickerList = useMemo(() => {
-      const search = pickerSearch.trim().toLowerCase();
-      
-      // Filtramos por nombre o legajo
+      const query = pickerSearch.trim().toLowerCase();
       let filtered = staffList.filter(s => 
-          s.name.toLowerCase().includes(search) || 
-          s.id.toLowerCase().includes(search)
+          s.name.toLowerCase().includes(query) || 
+          s.id.toLowerCase().includes(query)
       );
       
-      // Aplicamos ranking de relevancia
       return filtered.sort((a, b) => {
           const isASelected = a.id === pickerState?.currentValueId;
           const isBSelected = b.id === pickerState?.currentValueId;
-          
-          // 1. El actualmente asignado siempre arriba de todo
           if (isASelected && !isBSelected) return -1;
           if (!isASelected && isBSelected) return 1;
 
-          // 2. Coincidencia EXACTA de Legajo
-          const isAExactLegajo = a.id.toLowerCase() === search;
-          const isBExactLegajo = b.id.toLowerCase() === search;
-          if (isAExactLegajo && !isBExactLegajo) return -1;
-          if (!isAExactLegajo && isBExactLegajo) return 1;
+          const isAExactID = a.id.toLowerCase() === query;
+          const isBExactID = b.id.toLowerCase() === query;
+          if (isAExactID && !isBExactID) return -1;
+          if (!isAExactID && isBExactID) return 1;
 
-          // 3. Nombre que EMPIEZA con la búsqueda
-          const isAStartsWith = a.name.toLowerCase().startsWith(search);
-          const isBStartsWith = b.name.toLowerCase().startsWith(search);
+          const isAStartsWith = a.name.toLowerCase().startsWith(query);
+          const isBStartsWith = b.name.toLowerCase().startsWith(query);
           if (isAStartsWith && !isBStartsWith) return -1;
           if (!isAStartsWith && isBStartsWith) return 1;
 
-          // 4. Orden alfabético para el resto
           return a.name.localeCompare(b.name);
-      }).slice(0, 40); // Limitamos resultados para rendimiento fluido
+      }).slice(0, 40);
   }, [staffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
@@ -290,15 +249,7 @@ const App: React.FC = () => {
               ) : (
                   <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU OPERATIVO</h1>
               )}
-              {activeTab !== 'adn' && (
-                <div className="flex bg-slate-100 p-1 rounded-xl">
-                    {(['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'] as const).map(s => (
-                        <button key={s} onClick={() => setShiftFilter(s)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === s ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{s}</button>
-                    ))}
-                </div>
-              )}
           </div>
-          
           <div className="flex items-center gap-3 relative z-[100]">
              {activeTab !== 'adn' && (
                 <div className="flex items-center gap-2">
@@ -306,22 +257,16 @@ const App: React.FC = () => {
                         <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1.5 rounded-full hover:bg-slate-50 text-slate-400"><ChevronLeft size={14} /></button>
                         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[10px] font-black text-slate-700 outline-none uppercase cursor-pointer px-1 w-24 text-center" />
                         <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1.5 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={14} /></button>
-                        {!isToday && <button onClick={() => setSelectedDate(today)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:text-indigo-600 transition-all ml-1 shadow-sm" title="Ir a Hoy"><RotateCcw size={14} /></button>}
+                        {selectedDate !== today && <button onClick={() => setSelectedDate(today)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:text-indigo-600 transition-all ml-1 shadow-sm"><RotateCcw size={14} /></button>}
                     </div>
-                    <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all active:scale-95" title="Configurar ADN Maestro"><Database size={18} /></button>
+                    <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all"><Database size={18} /></button>
+                    <button onClick={() => setShowInsight(!showInsight)} className={`p-3 rounded-2xl shadow-md transition-all ${showInsight ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600'}`}><Sparkles size={18} /></button>
+                    <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md"><Plus size={18} /></button>
+                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md"><CheckCircle2 size={18} /></button>
                 </div>
              )}
-             
-             {activeTab === 'adn' ? (
-                 <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl h-11 transition-all hover:scale-105 hover:bg-emerald-700"><CheckCircle size={18} /> Guardar ADN</button>
-             ) : (
-                <div className="flex items-center gap-2">
-                    <button onClick={handleClonePreviousDay} className="bg-amber-600 text-white p-3 rounded-2xl shadow-md hover:bg-amber-700 transition-all active:scale-95" title="Clonar Día Anterior"><Copy size={18} /></button>
-                    <button onClick={() => setShowInsight(!showInsight)} className={`p-3 rounded-2xl shadow-md transition-all active:scale-95 ${showInsight ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-100'}`} title="AI Insights"><Sparkles size={18} /></button>
-                    <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md hover:bg-indigo-700 transition-all active:scale-95" title="Añadir Nueva Ruta"><Plus size={18} /></button>
-                    <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md hover:bg-slate-900 transition-all active:scale-95" title="Cargar Datos ADN"><Wand2 size={18} /></button>
-                    <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md hover:bg-emerald-700 transition-all active:scale-95" title="Cerrar Turno / Reporte"><CheckCircle2 size={18} /></button>
-                </div>
+             {activeTab === 'adn' && (
+                 <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl"><CheckCircle size={18} /> Guardar ADN</button>
              )}
           </div>
         </header>
@@ -330,27 +275,20 @@ const App: React.FC = () => {
             {isLoaded ? (
                 activeTab !== 'personal' ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className={`px-6 py-2 border-b flex items-center justify-between shrink-0 shadow-sm z-40 transition-colors duration-500 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                    <div className={`px-6 py-2 border-b flex items-center justify-between shrink-0 shadow-sm z-40 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
                         <div className="flex p-1 bg-slate-100 rounded-xl">
                             <button onClick={() => setSubTab('GENERAL')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'GENERAL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RECOLECCIÓN</button>
                             <button onClick={() => setSubTab('REPASO')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
                             <button onClick={() => setSubTab('TRANSFERENCIA')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'TRANSFERENCIA' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>TOLVA</button>
                         </div>
-                        {shiftFilter !== 'TODOS' && shiftManagers[shiftFilter] && (
-                            <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, curr) => setPickerState({ type: (activeTab === 'adn' ? 'adn-managers' : 'managers'), targetId: shiftFilter, field: f as string, role: r, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} />
-                        )}
                     </div>
                     <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
-                        {showInsight && (
-                            <div className="shrink-0 animate-in slide-in-from-top duration-300">
-                                <GeminiInsight data={records.filter(r => shiftFilter === 'TODOS' || r.shift === shiftFilter)} />
-                            </div>
-                        )}
-                        <div className={`flex-1 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col transition-colors duration-500 ${activeTab === 'adn' ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'}`}>
+                        {showInsight && <GeminiInsight data={records} />}
+                        <div className="flex-1 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col">
                             {subTab === 'TRANSFERENCIA' ? (
-                                <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: (activeTab === 'adn' ? 'adn-transfer' : 'transfer'), targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
+                                <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
                             ) : (
-                                <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, curr) => setPickerState({ type: (activeTab === 'adn' ? 'adn-route' : 'route'), targetId: id, field, role, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} activeShiftLabel={activeTab === 'adn' ? `TURNO ${shiftFilter} (ADN)` : `TURNO ${shiftFilter}`} selectedDate={selectedDate} />
+                                <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, curr) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} />
                             )}
                         </div>
                     </div>
@@ -372,38 +310,22 @@ const App: React.FC = () => {
                         <UserCircle className="text-indigo-400" size={24} />
                         <h3 className="text-xl font-black uppercase italic">Asignar {pickerState.role}</h3>
                     </div>
-                    <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={24} /></button>
+                    <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl"><X size={24} /></button>
                 </div>
                 <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
                     <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Vaciar Casilla</button>
                     <div className="relative flex-1 group">
-                        <input autoFocus type="text" placeholder="BUSCAR POR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
+                        <input autoFocus type="text" placeholder="BUSCAR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
                     {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
-                        <div 
-                          key={s.id} 
-                          onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} 
-                          className={`p-6 rounded-[2rem] border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-                              s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md scale-[1.02]' : 'border-transparent hover:border-indigo-400'
-                          } ${s.status === StaffStatus.ABSENT ? 'opacity-50 grayscale' : ''}`}
-                        >
+                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-6 rounded-[2rem] border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-transparent hover:border-indigo-400'} ${s.status === StaffStatus.ABSENT ? 'opacity-50 grayscale' : ''}`}>
                             <div className="flex items-center gap-5">
                                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : (s.id === pickerState.currentValueId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500')}`}>{s.name.charAt(0)}</div>
-                                <div>
-                                    <h4 className="text-[13px] font-black uppercase text-slate-800 flex items-center gap-2">
-                                        {s.name} 
-                                        {s.id === pickerState.currentValueId && (
-                                            <span className="bg-indigo-100 text-indigo-700 text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest">ACTUAL</span>
-                                        )}
-                                    </h4>
-                                    <p className="text-[10px] font-bold text-slate-400 mt-2 tracking-widest">
-                                        LEGAJO: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500 ml-2">({s.address})</span>}
-                                    </p>
-                                </div>
+                                <div><h4 className="text-[13px] font-black uppercase text-slate-800">{s.name}</h4><p className="text-[10px] font-bold text-slate-400 mt-1">LEGAJO: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500">({s.address})</span>}</p></div>
                             </div>
-                            <button className={`p-4 rounded-2xl text-white shadow-lg transition-all ${s.status === StaffStatus.ABSENT ? 'bg-slate-200' : 'bg-indigo-600 hover:brightness-110'}`}><Check size={24} /></button>
+                            <button className={`p-4 rounded-2xl text-white ${s.status === StaffStatus.ABSENT ? 'bg-slate-200' : 'bg-indigo-600'}`}><Check size={24} /></button>
                         </div>
                     )) : (
                         <div className="text-center py-20 bg-slate-100 rounded-[3rem] border-4 border-dashed border-slate-200">

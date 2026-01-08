@@ -19,7 +19,7 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
     try {
       const apiKey = process.env.API_KEY;
       if (!apiKey) {
-        throw new Error("API_KEY no configurada. Paso: Vercel Dashboard -> Settings -> Environment Variables");
+        throw new Error("API_KEY no configurada.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -35,7 +35,7 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
         Datos:
         ${JSON.stringify(data.map(r => ({ zone: r.zone, status: r.zoneStatus, report: r.supervisionReport, tonnage: r.tonnage })), null, 2)}
         
-        Formatea la respuesta en Markdown limpio, usando viñetas. Sé conciso y profesional, como un jefe de operaciones que informa al Secretario.
+        Formatea la respuesta en Markdown limpio, usando viñetas. Sé conciso y profesional.
       `;
 
       const response = await ai.models.generateContent({
@@ -46,10 +46,9 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
       setInsight(response.text || "No se pudo generar el análisis.");
     } catch (err: any) {
       console.error(err);
-      const isConfig = err.message?.includes("configurada");
       setError({ 
         message: err.message || "Error al generar el análisis operativo.",
-        isConfig
+        isConfig: err.message?.includes("configurada")
       });
     } finally {
       setLoading(false);
@@ -88,7 +87,7 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
                 <p className="text-xs font-bold mt-1 opacity-80">{error.message}</p>
                 {error.isConfig && (
                   <div className="mt-4 p-3 bg-white/50 rounded-xl text-[10px] font-bold">
-                    Siga esta ruta: Dashboard &gt; Settings &gt; Env Vars &gt; Key: API_KEY
+                    Paso: Vercel Dashboard &gt; Settings &gt; Env Vars &gt; Key: API_KEY
                   </div>
                 )}
             </div>

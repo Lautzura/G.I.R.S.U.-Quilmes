@@ -38,6 +38,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
     else if (key === 'ArrowDown') { e.preventDefault(); onNavigate(rowIndex + 1, colIndex); }
     else if (key === 'ArrowLeft') { e.preventDefault(); onNavigate(rowIndex, colIndex - 1); }
     else if (key === 'ArrowRight') { e.preventDefault(); onNavigate(rowIndex, colIndex + 1); }
+    else if (key === 'Enter') { e.preventDefault(); onNavigate(rowIndex + 1, colIndex); }
   };
 
   return (
@@ -91,23 +92,51 @@ const StaffCell: React.FC<StaffCellProps> = ({
 export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate }) => {
   
   const focusCell = (r: number, c: number) => {
-    if (r < 0 || r >= data.length || c < 0 || c > 13) return;
-    const el = document.querySelector(`[data-row="${r}"][data-col="${c}"]`) as HTMLElement;
+    if (r < 0 || r >= data.length) return;
+    // Limit columns between 0 and 13
+    const safeC = Math.max(0, Math.min(c, 13));
+    const el = document.querySelector(`[data-row="${r}"][data-col="${safeC}"]`) as HTMLElement;
     if (el) {
-        el.focus();
         const input = el.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
         if (input) {
             input.focus();
             if (input instanceof HTMLInputElement) input.select();
+        } else {
+            el.focus();
         }
     }
   };
 
-  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, rIdx: number, cIdx: number) => {
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLElement>, rIdx: number, cIdx: number) => {
     const { key } = e;
-    if (key === 'Enter') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
-    else if (key === 'ArrowUp') { e.preventDefault(); focusCell(rIdx - 1, cIdx); }
-    else if (key === 'ArrowDown') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
+    const target = e.target as HTMLInputElement;
+
+    if (key === 'Enter') { 
+      e.preventDefault(); 
+      focusCell(rIdx + 1, cIdx); 
+    }
+    else if (key === 'ArrowUp') { 
+      e.preventDefault(); 
+      focusCell(rIdx - 1, cIdx); 
+    }
+    else if (key === 'ArrowDown') { 
+      e.preventDefault(); 
+      focusCell(rIdx + 1, cIdx); 
+    }
+    else if (key === 'ArrowLeft') {
+      // Move left if at start of input or if it's a select
+      if (!(target instanceof HTMLInputElement) || target.selectionStart === 0) {
+        e.preventDefault();
+        focusCell(rIdx, cIdx - 1);
+      }
+    }
+    else if (key === 'ArrowRight') {
+      // Move right if at end of input or if it's a select
+      if (!(target instanceof HTMLInputElement) || target.selectionEnd === target.value.length) {
+        e.preventDefault();
+        focusCell(rIdx, cIdx + 1);
+      }
+    }
   };
 
   const handleToggleStatus = (s: StaffMember, newStatus: StaffStatus) => {
@@ -124,7 +153,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
           onUpdateStaff({
               ...s,
               status: StaffStatus.ABSENT,
-              address: 'FALTA', // Motivo genérico solicitado
+              address: 'FALTA',
               absenceStartDate: selectedDate
           });
       }
@@ -177,7 +206,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR', r.replacementAux1?.id)} onUpdateStatus={handleToggleStatus} />
                   <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR', r.replacementAux2?.id)} onUpdateStatus={handleToggleStatus} />
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0">
-                    <select value={r.zoneStatus} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
+                    <select value={r.zoneStatus} onKeyDown={e => handleInputKeyDown(e, rowIndex, 10)} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
                       <option value={ZoneStatus.PENDING}>PENDIENTE</option>
                       <option value={ZoneStatus.COMPLETE}>COMPLETA</option>
                       <option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>

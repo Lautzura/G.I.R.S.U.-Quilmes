@@ -14,19 +14,15 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
   const [error, setError] = useState<{message: string, isConfig?: boolean} | null>(null);
 
   const generateInsight = async () => {
-    // Verificación de API KEY para entorno de producción (Vercel)
-    if (!process.env.API_KEY || process.env.API_KEY === 'undefined') {
-        setError({
-            message: "Falta configurar la 'API_KEY' en las variables de entorno de Vercel.",
-            isConfig: true
-        });
-        return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const apiKey = process.env.API_KEY;
+      if (!apiKey) {
+        throw new Error("API_KEY no configurada. Paso: Vercel Dashboard -> Settings -> Environment Variables");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
       const prompt = `
         Analiza el siguiente reporte de recolección de residuos de Quilmes. 
         Los datos están en formato JSON.
@@ -48,9 +44,13 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
       });
 
       setInsight(response.text || "No se pudo generar el análisis.");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError({ message: "Error de conexión con Gemini. Verifique los límites de su API Key." });
+      const isConfig = err.message?.includes("configurada");
+      setError({ 
+        message: err.message || "Error al generar el análisis operativo.",
+        isConfig
+      });
     } finally {
       setLoading(false);
     }
@@ -87,9 +87,9 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
                 <p className="text-sm font-black uppercase">Atención Operativa</p>
                 <p className="text-xs font-bold mt-1 opacity-80">{error.message}</p>
                 {error.isConfig && (
-                    <div className="mt-4 p-3 bg-white/50 rounded-xl text-[10px] font-bold">
-                        Paso: Vercel Dashboard > Settings > Environment Variables > Key: API_KEY
-                    </div>
+                  <div className="mt-4 p-3 bg-white/50 rounded-xl text-[10px] font-bold">
+                    Siga esta ruta: Dashboard &gt; Settings &gt; Env Vars &gt; Key: API_KEY
+                  </div>
                 )}
             </div>
           </div>

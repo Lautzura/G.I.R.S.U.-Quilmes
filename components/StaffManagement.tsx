@@ -21,6 +21,17 @@ interface StaffManagementProps {
 
 type SortKey = 'name' | 'id' | 'role';
 
+// Utilidad local para asegurar unicidad en el render
+const uniqueById = (list: StaffMember[]) => {
+  const seen = new Set();
+  return list.filter(s => {
+    const id = String(s.id).trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
 export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, onBulkAddStaff, selectedShift, records, searchTerm, onSearchChange }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
@@ -113,7 +124,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   };
 
   const shiftStaff = useMemo(() => {
-    return staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift);
+    return uniqueById(staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift));
   }, [staffList, selectedShift]);
 
   const absenceBreakdown = useMemo(() => {
@@ -127,8 +138,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   }, [shiftStaff]);
 
   const displayedStaff = useMemo(() => {
+    const search = searchTerm.toLowerCase().trim();
     let filtered = shiftStaff.filter(s => {
-      const search = searchTerm.toLowerCase();
       const matchesSearch = s.name.toLowerCase().includes(search) || s.id.toLowerCase().includes(search);
       if (!matchesSearch) return false;
       
@@ -139,6 +150,10 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     });
 
     return filtered.sort((a, b) => {
+      // Prioridad: Coincidencia exacta de legajo siempre arriba
+      if (a.id === search) return -1;
+      if (b.id === search) return 1;
+
       const valA = (a[sortConfig.key] || '').toString().toUpperCase();
       const valB = (b[sortConfig.key] || '').toString().toUpperCase();
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, AbsenceReason } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
@@ -7,6 +7,7 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
+import { GeminiInsight } from './components/GeminiInsight';
 import { getAbsenceStyles } from './styles';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
@@ -16,10 +17,7 @@ import {
 import { 
     ClipboardList,
     Users,
-    Search,
-    X,
     Plus,
-    Check,
     ChevronLeft,
     ChevronRight,
     UserMinus,
@@ -29,7 +27,12 @@ import {
     CheckCircle2,
     Database,
     ShieldAlert,
-    Wand2
+    Wand2,
+    Copy,
+    Sparkles,
+    X,
+    Check,
+    UserCircle
 } from 'lucide-react';
 
 const DB_PREFIX = 'girsu_v20_';
@@ -41,12 +44,24 @@ const DAILY_DATA_KEY = `${DB_PREFIX}day_`;
 const DAILY_TRANS_KEY = `${DB_PREFIX}trans_`;
 const DAILY_MGRS_KEY = `${DB_PREFIX}mgrs_`;
 
+// Utilidad para asegurar que no haya duplicados por ID
+const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
+  const seen = new Set();
+  return list.filter(s => {
+    const id = String(s.id).trim();
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
 const App: React.FC = () => {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [activeTab, setActiveTab] = useState<'parte' | 'personal' | 'adn'>('parte');
   const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA'>('GENERAL');
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showInsight, setShowInsight] = useState(false);
   
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
@@ -68,8 +83,10 @@ const App: React.FC = () => {
   useEffect(() => {
     setIsLoaded(false);
     const savedStaff = localStorage.getItem(STAFF_KEY);
-    const initialStaff = savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF;
+    // Limpiamos duplicados al cargar
+    const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
+    
     const findS = (id: any, list: StaffMember[]) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
 
     if (activeTab === 'adn') {
@@ -129,9 +146,41 @@ const App: React.FC = () => {
     } catch (e) {}
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, activeTab]);
 
+  const handleClonePreviousDay = useCallback(() => {
+    const d = new Date(selectedDate + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    const prevDate = d.toISOString().split('T')[0];
+    const prevData = localStorage.getItem(`${DAILY_DATA_KEY}${prevDate}`);
+    
+    if (!prevData) {
+        alert("No hay datos del día anterior para clonar.");
+        return;
+    }
+
+    if (window.confirm(`¿Clonar personal y vehículos del día ${prevDate}?`)) {
+        const parsedPrev = JSON.parse(prevData);
+        const findS = (id: any) => staffList.find(s => String(s.id).trim() === String(id || '').trim()) || null;
+
+        setRecords(prev => prev.map(current => {
+            const matched = parsedPrev.find((p: any) => p.zone === current.zone && p.shift === current.shift);
+            if (!matched) return current;
+            return {
+                ...current,
+                internalId: matched.internalId || '',
+                domain: matched.domain || '',
+                driver: findS(matched.driver),
+                aux1: findS(matched.aux1),
+                aux2: findS(matched.aux2),
+                aux3: findS(matched.aux3),
+                aux4: findS(matched.aux4)
+            };
+        }));
+    }
+  }, [selectedDate, staffList]);
+
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
     const idToFind = String(originalId || updatedMember.id).trim();
-    setStaffList(prev => prev.map(s => String(s.id).trim() === idToFind ? updatedMember : s));
+    setStaffList(prev => deduplicateStaff(prev.map(s => String(s.id).trim() === idToFind ? updatedMember : s)));
     
     setRecords(prev => prev.map(r => ({
         ...r,
@@ -177,19 +226,40 @@ const App: React.FC = () => {
     setPickerState(null);
   };
 
+  // ALGORITMO DE BÚSQUEDA OPTIMIZADO
   const sortedPickerList = useMemo(() => {
-      const filtered = staffList.filter(s => 
-          s.name.toLowerCase().includes(pickerSearch.toLowerCase()) || 
-          s.id.includes(pickerSearch)
+      const search = pickerSearch.trim().toLowerCase();
+      
+      // 1. Filtramos duplicados y aplicamos búsqueda básica
+      let filtered = staffList.filter(s => 
+          s.name.toLowerCase().includes(search) || 
+          s.id.includes(search)
       );
       
+      // 2. Aplicamos ranking de relevancia
       return filtered.sort((a, b) => {
           const isASelected = a.id === pickerState?.currentValueId;
           const isBSelected = b.id === pickerState?.currentValueId;
+          
+          // Prioridad 1: El actualmente asignado siempre arriba
           if (isASelected && !isBSelected) return -1;
           if (!isASelected && isBSelected) return 1;
+
+          // Prioridad 2: Coincidencia exacta de Legajo
+          const isAExactLegajo = a.id === search;
+          const isBExactLegajo = b.id === search;
+          if (isAExactLegajo && !isBExactLegajo) return -1;
+          if (!isAExactLegajo && isBExactLegajo) return 1;
+
+          // Prioridad 3: Nombre que EMPIEZA con la búsqueda
+          const isAStartsWith = a.name.toLowerCase().startsWith(search);
+          const isBStartsWith = b.name.toLowerCase().startsWith(search);
+          if (isAStartsWith && !isBStartsWith) return -1;
+          if (!isAStartsWith && isBStartsWith) return 1;
+
+          // Prioridad 4: Orden alfabético por defecto
           return a.name.localeCompare(b.name);
-      });
+      }).slice(0, 50); // Limitamos a 50 resultados para rendimiento
   }, [staffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
@@ -246,6 +316,8 @@ const App: React.FC = () => {
                  <button onClick={() => setActiveTab('parte')} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 shadow-xl h-11 transition-all hover:scale-105 hover:bg-emerald-700"><CheckCircle size={18} /> Guardar ADN</button>
              ) : (
                 <div className="flex items-center gap-2">
+                    <button onClick={handleClonePreviousDay} className="bg-amber-600 text-white p-3 rounded-2xl shadow-md hover:bg-amber-700 transition-all active:scale-95" title="Clonar Día Anterior"><Copy size={18} /></button>
+                    <button onClick={() => setShowInsight(!showInsight)} className={`p-3 rounded-2xl shadow-md transition-all active:scale-95 ${showInsight ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-100'}`} title="AI Insights"><Sparkles size={18} /></button>
                     <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-indigo-600 text-white p-3 rounded-2xl shadow-md hover:bg-indigo-700 transition-all active:scale-95" title="Añadir Nueva Ruta"><Plus size={18} /></button>
                     <button onClick={() => { if(window.confirm("¿RESETEAR DÍA? Se cargarán los datos del ADN Maestro.")) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md hover:bg-slate-900 transition-all active:scale-95" title="Cargar Datos ADN"><Wand2 size={18} /></button>
                     <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md hover:bg-emerald-700 transition-all active:scale-95" title="Cerrar Turno / Reporte"><CheckCircle2 size={18} /></button>
@@ -254,10 +326,10 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden bg-[#f8fafc]">
+        <div className="flex-1 overflow-hidden bg-[#f8fafc] flex">
             {isLoaded ? (
                 activeTab !== 'personal' ? (
-                <div className="h-full flex flex-col">
+                <div className="flex-1 flex flex-col overflow-hidden">
                     <div className={`px-6 py-2 border-b flex items-center justify-between shrink-0 shadow-sm z-40 transition-colors duration-500 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
                         <div className="flex p-1 bg-slate-100 rounded-xl">
                             <button onClick={() => setSubTab('GENERAL')} className={`px-5 py-2 text-[9px] font-black rounded-lg transition-all ${subTab === 'GENERAL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RECOLECCIÓN</button>
@@ -268,8 +340,13 @@ const App: React.FC = () => {
                             <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, curr) => setPickerState({ type: (activeTab === 'adn' ? 'adn-managers' : 'managers'), targetId: shiftFilter, field: f as string, role: r, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} />
                         )}
                     </div>
-                    <div className="flex-1 p-4 overflow-hidden">
-                        <div className={`h-full bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col transition-colors duration-500 ${activeTab === 'adn' ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'}`}>
+                    <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
+                        {showInsight && (
+                            <div className="shrink-0 animate-in slide-in-from-top duration-300">
+                                <GeminiInsight data={records.filter(r => shiftFilter === 'TODOS' || r.shift === shiftFilter)} />
+                            </div>
+                        )}
+                        <div className={`flex-1 bg-white rounded-2xl shadow-xl border overflow-hidden flex flex-col transition-colors duration-500 ${activeTab === 'adn' ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'}`}>
                             {subTab === 'TRANSFERENCIA' ? (
                                 <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: (activeTab === 'adn' ? 'adn-transfer' : 'transfer'), targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
                             ) : (
@@ -279,10 +356,10 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 ) : (
-                <div className="h-full p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => [...prev, s])} onBulkAddStaff={newS => setStaffList(prev => [...prev, ...newS])} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
+                <div className="flex-1 p-8 overflow-y-auto"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
                 )
             ) : (
-                <div className="flex h-full items-center justify-center bg-white"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>
+                <div className="flex h-full items-center justify-center bg-white w-full"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>
             )}
         </div>
       </main>
@@ -291,34 +368,48 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
-                    <h3 className="text-xl font-black uppercase italic">Asignar {pickerState.role}</h3>
+                    <div className="flex items-center gap-3">
+                        <UserCircle className="text-indigo-400" size={24} />
+                        <h3 className="text-xl font-black uppercase italic">Asignar {pickerState.role}</h3>
+                    </div>
                     <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={24} /></button>
                 </div>
                 <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
-                    <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Quitar</button>
+                    <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-[#FFF5F5] text-red-500 rounded-[1.5rem] text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"><UserMinus size={18} /> Vaciar Casilla</button>
                     <div className="relative flex-1 group">
-                        <input autoFocus type="text" placeholder="BUSCAR..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:bg-white transition-all uppercase" />
+                        <input autoFocus type="text" placeholder="ESCRIBA LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white transition-all uppercase" />
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
-                    {sortedPickerList.map(s => (
+                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
                         <div 
                           key={s.id} 
                           onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} 
                           className={`p-6 rounded-[2rem] border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${
-                              s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50/50 scale-[1.02]' : 'border-transparent hover:border-indigo-400'
+                              s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md scale-[1.02]' : 'border-transparent hover:border-indigo-400'
                           } ${s.status === StaffStatus.ABSENT ? 'opacity-50 grayscale' : ''}`}
                         >
                             <div className="flex items-center gap-5">
-                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : (s.id === pickerState.currentValueId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500')}`}>{s.name.charAt(0)}</div>
                                 <div>
-                                    <h4 className="text-[13px] font-black uppercase text-slate-800">{s.name} {s.id === pickerState.currentValueId && <span className="text-indigo-600 text-[8px] italic ml-2">(ACTUAL)</span>}</h4>
-                                    <p className="text-[10px] font-bold text-slate-400 mt-2">LEGAJO: {s.id} {s.status === StaffStatus.ABSENT && `(${s.address})`}</p>
+                                    <h4 className="text-[13px] font-black uppercase text-slate-800 flex items-center gap-2">
+                                        {s.name} 
+                                        {s.id === pickerState.currentValueId && (
+                                            <span className="bg-indigo-100 text-indigo-700 text-[8px] px-2 py-0.5 rounded-full font-black tracking-widest">ACTUAL</span>
+                                        )}
+                                    </h4>
+                                    <p className="text-[10px] font-bold text-slate-400 mt-2 tracking-widest">
+                                        LEGAJO: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500 ml-2">({s.address})</span>}
+                                    </p>
                                 </div>
                             </div>
-                            <button className={`p-4 rounded-2xl text-white shadow-lg transition-all ${s.status === StaffStatus.ABSENT ? 'bg-slate-200' : 'bg-indigo-600'}`}><Check size={24} /></button>
+                            <button className={`p-4 rounded-2xl text-white shadow-lg transition-all ${s.status === StaffStatus.ABSENT ? 'bg-slate-200' : 'bg-indigo-600 hover:brightness-110'}`}><Check size={24} /></button>
                         </div>
-                    ))}
+                    )) : (
+                        <div className="text-center py-20 bg-slate-100 rounded-[3rem] border-4 border-dashed border-slate-200">
+                             <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">No se encontraron resultados</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

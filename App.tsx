@@ -33,7 +33,7 @@ import {
     Clock
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v24_'; // Incrementamos versión para limpieza
+const DB_PREFIX = 'girsu_v24_'; 
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -84,23 +84,19 @@ const App: React.FC = () => {
     maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' 
   }), []);
 
-  // Función de búsqueda avanzada de personal para manejar Alias de constantes y IDs reales
   const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
     if (!searchId) return null;
     const query = String(searchId).trim().toUpperCase();
     
-    // 1. Buscar por ID exacto
     let found = currentStaff.find(s => String(s.id).trim().toUpperCase() === query);
     if (found) return found;
 
-    // 2. Si es un alias de STAFF_DB (ej: 'PEREZ_RO')
     if (STAFF_DB[query]) {
         const dbId = STAFF_DB[query].id;
         found = currentStaff.find(s => String(s.id).trim().toUpperCase() === String(dbId).toUpperCase());
         if (found) return found;
     }
 
-    // 3. Fallback por nombre parcial (último recurso)
     return currentStaff.find(s => s.name.toUpperCase().includes(query)) || null;
   }, []);
 
@@ -134,7 +130,6 @@ const App: React.FC = () => {
     ];
   }, [findStaffSecure]);
 
-  // CARGA DE DATOS PRINCIPAL
   useEffect(() => {
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
     if (loadingLock.current === currentModeKey && isLoaded) return;
@@ -142,7 +137,6 @@ const App: React.FC = () => {
     setIsLoaded(false);
     loadingLock.current = currentModeKey;
 
-    // Cargar personal primero
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
@@ -180,12 +174,10 @@ const App: React.FC = () => {
             const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
         } else if (adnRoutes) {
-            // Clonar ADN para el nuevo día
             setRecords(mapStaffToIds(JSON.parse(adnRoutes)).map(r => ({ ...r, id: `R-${r.zone}-${selectedDate}-${Math.random()}`, zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
             if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
             if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
         } else {
-            // Cargar datos de fábrica si no hay nada
             setRecords(getInitialRecordsFromConstants(initialStaff));
             setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         }
@@ -194,7 +186,6 @@ const App: React.FC = () => {
     setTimeout(() => setIsLoaded(true), 50);
   }, [selectedDate, activeTab, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans]);
 
-  // PERSISTENCIA DE DATOS
   useEffect(() => {
     if (!isLoaded) return;
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
@@ -287,42 +278,53 @@ const App: React.FC = () => {
 
         <div className="flex-1 overflow-hidden bg-[#f8fafc] flex flex-col">
             {isLoaded ? (
-                activeTab !== 'personal' ? (
                 <>
                     <div className={`px-6 py-3 border-b flex items-center gap-6 shrink-0 z-40 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
+                        {/* Selector de Turno - Siempre visible */}
                         <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
                             {['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'].map(f => (
                                 <button key={f} onClick={() => setShiftFilter(f as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === f ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{f}</button>
                             ))}
                         </div>
-                        <div className="h-6 w-px bg-slate-200 mx-2" />
-                        <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
-                            <button onClick={() => setSubTab('GENERAL')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'GENERAL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RECOLECCIÓN</button>
-                            <button onClick={() => setSubTab('REPASO')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
-                            <button onClick={() => setSubTab('TRANSFERENCIA')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'TRANSFERENCIA' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>TOLVA</button>
-                        </div>
-                        
-                        {shiftFilter !== 'TODOS' && (
-                            <div className="flex-1 flex items-center gap-4 bg-slate-50 px-4 py-1.5 rounded-2xl border border-slate-100">
-                                <Clock size={16} className="text-slate-400" />
-                                <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, c) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: c })} onUpdateStaff={handleUpdateStaff} />
-                            </div>
+
+                        {/* Elementos exclusivos de la pestaña Parte Diario o ADN */}
+                        {activeTab !== 'personal' && (
+                            <>
+                                <div className="h-6 w-px bg-slate-200 mx-2" />
+                                <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
+                                    <button onClick={() => setSubTab('GENERAL')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'GENERAL' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>RECOLECCIÓN</button>
+                                    <button onClick={() => setSubTab('REPASO')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
+                                    <button onClick={() => setSubTab('TRANSFERENCIA')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'TRANSFERENCIA' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>TOLVA</button>
+                                </div>
+                                
+                                {shiftFilter !== 'TODOS' && (
+                                    <div className="flex-1 flex items-center gap-4 bg-slate-50 px-4 py-1.5 rounded-2xl border border-slate-100">
+                                        <Clock size={16} className="text-slate-400" />
+                                        <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, c) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: c })} onUpdateStaff={handleUpdateStaff} />
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
                     
-                    <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
-                        <div className="flex-1 bg-white rounded-3xl shadow-xl border overflow-hidden flex flex-col border-slate-200">
-                            {subTab === 'TRANSFERENCIA' ? (
-                                <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
-                            ) : (
-                                <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, curr) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
-                            )}
-                        </div>
+                    <div className="flex-1 overflow-hidden flex flex-col">
+                        {activeTab !== 'personal' ? (
+                            <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
+                                <div className="flex-1 bg-white rounded-3xl shadow-xl border overflow-hidden flex flex-col border-slate-200">
+                                    {subTab === 'TRANSFERENCIA' ? (
+                                        <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
+                                    ) : (
+                                        <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, curr) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
+                                <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                            </div>
+                        )}
                     </div>
                 </>
-                ) : (
-                <div className="flex-1 p-8 overflow-y-auto bg-slate-50"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
-                )
             ) : (
                 <div className="flex h-full items-center justify-center bg-white w-full">
                     <div className="flex flex-col items-center gap-4">

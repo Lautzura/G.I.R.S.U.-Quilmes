@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from '../types';
-import { Search, UserPlus, Trash2, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, ChevronDown, ChevronUp, User as UserIcon, FileSpreadsheet, Loader2, FilterX } from 'lucide-react';
+import { Search, UserPlus, Trash, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, User as UserIcon, FileSpreadsheet, Loader2, FilterX, Briefcase, ChevronDown, HardHat } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../styles';
@@ -21,7 +21,6 @@ interface StaffManagementProps {
 
 type SortKey = 'name' | 'id' | 'role';
 
-// Utilidad local para asegurar unicidad en el render
 const uniqueById = (list: StaffMember[]) => {
   const seen = new Set();
   return list.filter(s => {
@@ -38,6 +37,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [isImporting, setIsImporting] = useState(false);
   const [activeReasonFilter, setActiveReasonFilter] = useState<string | null>(null);
+  const [activeRoleFilter, setActiveRoleFilter] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const handleSort = (key: SortKey) => {
@@ -50,27 +50,19 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   const handleExcelImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsImporting(true);
     const reader = new FileReader();
-    
     reader.onload = (evt) => {
       try {
         const data = new Uint8Array(evt.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
-
-        if (rows.length === 0) {
-            setIsImporting(false);
-            return;
-        }
-
+        if (rows.length === 0) { setIsImporting(false); return; }
         let headerIdx = -1;
         let legajoCol = -1;
         let apellidoCol = -1;
         let nombresCol = -1;
-
         for (let i = 0; i < Math.min(rows.length, 30); i++) {
             const row = rows[i].map(c => String(c).trim().toUpperCase());
             const lIdx = row.findIndex(c => c === 'LEGAJO' || c === 'LEGA');
@@ -82,43 +74,23 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                 break;
             }
         }
-
         if (headerIdx === -1 || legajoCol === -1) {
             alert('No se detectó el encabezado "LEGAJO".');
             setIsImporting(false);
             return;
         }
-
         const newStaff: StaffMember[] = [];
         const dataRows = rows.slice(headerIdx + 1);
-
         dataRows.forEach((row) => {
             const id = String(row[legajoCol] || '').trim();
             const apellido = String(row[apellidoCol] || '').trim();
             const nombres = String(row[nombresCol] || '').trim();
-
             if (id && (apellido || nombres)) {
-                newStaff.push({
-                    id: id,
-                    name: `${apellido} ${nombres}`.trim().toUpperCase(),
-                    status: StaffStatus.PRESENT,
-                    role: 'AUXILIAR',
-                    gender: 'MASCULINO',
-                    preferredShift: 'MAÑANA',
-                    assignedZone: 'BASE'
-                });
+                newStaff.push({ id: id, name: `${apellido} ${nombres}`.trim().toUpperCase(), status: StaffStatus.PRESENT, role: 'AUXILIAR', gender: 'MASCULINO', preferredShift: 'MAÑANA', assignedZone: 'BASE' });
             }
         });
-
-        if (newStaff.length > 0 && onBulkAddStaff) {
-            onBulkAddStaff(newStaff);
-        }
-      } catch (err) {
-        alert('Error al procesar el Excel.');
-      } finally {
-        setIsImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+        if (newStaff.length > 0 && onBulkAddStaff) onBulkAddStaff(newStaff);
+      } catch (err) { alert('Error al procesar el Excel.'); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -127,171 +99,219 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     return uniqueById(staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift));
   }, [staffList, selectedShift]);
 
-  const absenceBreakdown = useMemo(() => {
+  const roleBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
     shiftStaff.forEach(s => {
-      if (s.status === StaffStatus.ABSENT && s.address) {
-        counts[s.address] = (counts[s.address] || 0) + 1;
-      }
+      const role = s.role || 'SIN ROL';
+      counts[role] = (counts[role] || 0) + 1;
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [shiftStaff]);
 
-  const displayedStaff = useMemo(() => {
+  const absenceBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    shiftStaff.forEach(s => {
+      if (s.status === StaffStatus.ABSENT && s.address) counts[s.address] = (counts[s.address] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [shiftStaff]);
+
+  const filteredStaff = useMemo(() => {
     const search = searchTerm.toLowerCase().trim();
-    let filtered = shiftStaff.filter(s => {
+    return shiftStaff.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(search) || s.id.toLowerCase().includes(search);
       if (!matchesSearch) return false;
-      
-      if (activeReasonFilter) {
-        return s.status === StaffStatus.ABSENT && s.address === activeReasonFilter;
-      }
+      if (activeReasonFilter && (s.status !== StaffStatus.ABSENT || s.address !== activeReasonFilter)) return false;
+      if (activeRoleFilter && s.role !== activeRoleFilter) return false;
       return true;
     });
+  }, [shiftStaff, searchTerm, activeReasonFilter, activeRoleFilter]);
 
-    return filtered.sort((a, b) => {
-      // Prioridad: Coincidencia exacta de legajo siempre arriba
-      if (a.id === search) return -1;
-      if (b.id === search) return 1;
-
+  const groupedStaff = useMemo(() => {
+    let sorted = [...filteredStaff].sort((a, b) => {
       const valA = (a[sortConfig.key] || '').toString().toUpperCase();
       const valB = (b[sortConfig.key] || '').toString().toUpperCase();
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [shiftStaff, searchTerm, sortConfig, activeReasonFilter]);
 
-  const stats = useMemo(() => {
-    return { 
-      total: shiftStaff.length, 
-      presente: shiftStaff.filter(s => s.status === StaffStatus.PRESENT).length, 
-      reserva: shiftStaff.filter(s => s.status === StaffStatus.RESERVA).length, 
-      ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length
-    };
-  }, [shiftStaff]);
+    if (selectedShift === 'TODOS') {
+      const groups: Record<string, StaffMember[]> = { 'MAÑANA': [], 'TARDE': [], 'NOCHE': [] };
+      sorted.forEach(s => {
+        if (s.preferredShift && groups[s.preferredShift]) groups[s.preferredShift].push(s);
+        else groups['MAÑANA'].push(s);
+      });
+      return groups;
+    }
+    return { [selectedShift]: sorted };
+  }, [filteredStaff, selectedShift, sortConfig]);
+
+  const stats = useMemo(() => ({ 
+    total: shiftStaff.length, 
+    presente: shiftStaff.filter(s => s.status === StaffStatus.PRESENT).length, 
+    reserva: shiftStaff.filter(s => s.status === StaffStatus.RESERVA).length, 
+    ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length
+  }), [shiftStaff]);
 
   const SortButton = ({ label, sortKey }: { label: string, sortKey: SortKey }) => (
     <button 
       onClick={() => handleSort(sortKey)}
-      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all border flex items-center gap-2 ${
-        sortConfig.key === sortKey 
-          ? 'bg-[#5850ec] text-white border-[#5850ec] shadow-lg italic' 
-          : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'
+      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all border flex items-center gap-1.5 ${
+        sortConfig.key === sortKey ? 'bg-indigo-600 text-white border-indigo-600 shadow-md italic' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'
       }`}
     >
       {label}
-      {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />) : <ArrowUpDown size={12} className="opacity-30" />}
+      {sortConfig.key === sortKey ? (sortConfig.direction === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />) : <ArrowUpDown size={10} className="opacity-30" />}
     </button>
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="TOTAL" value={stats.total} icon={<Users size={28} />} color="indigo" />
-        <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={28} />} color="emerald" />
-        <StatCard label="RESERVA" value={stats.reserva} icon={<Star size={28} />} color="amber" />
-        <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={28} />} color="red" />
+    <div className="space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="TOTAL" value={stats.total} icon={<Users size={22} />} color="indigo" />
+        <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={22} />} color="emerald" />
+        <StatCard label="RESERVA" value={stats.reserva} icon={<Star size={22} />} color="amber" />
+        <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={22} />} color="red" />
+      </div>
+
+      <div className="bg-white rounded-[2.5rem] p-5 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row items-center gap-4 w-full xl:w-auto">
+            <div className="flex items-center gap-3 shrink-0">
+                <div className="bg-[#111827] text-white p-2.5 rounded-2xl shadow-lg"><LayoutList size={20} /></div>
+                <h2 className="text-base font-black text-slate-800 uppercase italic tracking-tighter">Padrón de Personal</h2>
+            </div>
+            
+            <div className="flex items-center gap-2 w-full lg:w-auto">
+                <div className="relative flex-1 lg:w-72 group">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={16} />
+                    <input 
+                      type="text" 
+                      placeholder="LEGAJO O NOMBRE..." 
+                      value={searchTerm} 
+                      onChange={(e) => onSearchChange(e.target.value)} 
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 transition-all shadow-sm" 
+                    />
+                </div>
+
+                <div className="relative w-48 shrink-0">
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" size={16} />
+                    <select 
+                      value={activeRoleFilter || ''} 
+                      onChange={e => setActiveRoleFilter(e.target.value || null)}
+                      className="w-full pl-10 pr-10 py-3 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[10px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 appearance-none cursor-pointer transition-all shadow-sm"
+                    >
+                        <option value="">TODOS LOS ROLES</option>
+                        {roleBreakdown.map(([role, count]) => (
+                            <option key={role} value={role}>{role} ({count})</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14} />
+                </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+                <SortButton label="NOMBRE" sortKey="name" />
+                <SortButton label="LEGAJO" sortKey="id" />
+                <SortButton label="ROL" sortKey="role" />
+            </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full xl:w-auto">
+            <input type="file" ref={fileInputRef} onChange={handleExcelImport} className="hidden" accept=".xlsx, .xls" />
+            <button onClick={() => fileInputRef.current?.click()} className="flex-1 xl:flex-none flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:brightness-110 transition-all"><FileSpreadsheet size={16} /> IMPORTAR</button>
+            <button onClick={() => setIsAddModalOpen(true)} className="flex-1 xl:flex-none flex items-center justify-center gap-2 px-8 py-3.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-xl hover:brightness-110 transition-all"><UserPlus size={16} /> NUEVO</button>
+        </div>
       </div>
 
       {absenceBreakdown.length > 0 && (
-        <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 animate-in slide-in-from-top-4">
-            <div className="flex items-center gap-4 mb-4">
-                <div className="p-2 bg-red-50 text-red-600 rounded-xl"><AlertCircle size={20} /></div>
-                <div>
-                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest">Resumen de Novedades</h3>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase">Haz clic en un motivo para filtrar la lista</p>
-                </div>
-                {activeReasonFilter && (
-                    <button onClick={() => setActiveReasonFilter(null)} className="ml-auto flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg text-[9px] font-black uppercase hover:bg-slate-200 transition-all">
-                        <FilterX size={14} /> Quitar Filtro
-                    </button>
-                )}
-            </div>
-            <div className="flex flex-wrap gap-3">
-                {absenceBreakdown.map(([reason, count]) => (
-                    <button 
+          <div className="flex items-center gap-3 px-6 py-2 bg-red-50/50 border border-red-100 rounded-3xl animate-in slide-in-from-top-2">
+              <AlertCircle size={14} className="text-red-500" />
+              <span className="text-[9px] font-black text-red-600 uppercase tracking-widest mr-2">Filtro Rápido de Novedades:</span>
+              <div className="flex flex-wrap gap-2">
+                  {absenceBreakdown.map(([reason, count]) => (
+                      <button 
                         key={reason} 
                         onClick={() => setActiveReasonFilter(activeReasonFilter === reason ? null : reason)}
-                        className={`group px-4 py-3 rounded-2xl flex items-center gap-4 transition-all border-2 ${activeReasonFilter === reason ? 'border-indigo-500 bg-indigo-50 scale-105 shadow-md' : 'border-slate-50 hover:border-slate-200 hover:bg-slate-50'}`}
-                    >
-                        <span className={`text-[10px] font-black uppercase ${activeReasonFilter === reason ? 'text-indigo-600' : 'text-slate-500 group-hover:text-slate-700'}`}>{reason}</span>
-                        <span className={`min-w-[24px] h-6 flex items-center justify-center rounded-lg text-[11px] font-black text-white ${activeReasonFilter === reason ? 'bg-indigo-600' : 'bg-slate-800'}`}>{count}</span>
-                    </button>
-                ))}
-            </div>
-        </div>
+                        className={`px-3 py-1 rounded-full text-[8px] font-black uppercase transition-all border ${activeReasonFilter === reason ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-500 border-red-200 hover:border-red-400'}`}
+                      >
+                          {reason} ({count})
+                      </button>
+                  ))}
+              </div>
+              {activeReasonFilter && (
+                  <button onClick={() => setActiveReasonFilter(null)} className="ml-auto text-[8px] font-black text-red-600 uppercase hover:underline">Ver Todos</button>
+              )}
+          </div>
       )}
 
-      <div className="bg-white rounded-[3rem] p-6 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-6">
-        <div className="flex flex-col lg:flex-row items-center gap-6 w-full xl:w-auto">
-            <div className="flex items-center gap-4 shrink-0">
-                <div className="bg-[#111827] text-white p-3 rounded-2xl shadow-xl"><LayoutList size={24} /></div>
-                <h2 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter">PADRÓN GENERAL</h2>
-            </div>
-            <div className="relative w-full lg:w-80 group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors" size={18} />
-                <input type="text" placeholder="BUSCAR NOMBRE O LEGAJO..." value={searchTerm} onChange={(e) => onSearchChange(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-[1.5rem] text-[11px] font-black uppercase outline-none focus:bg-white focus:border-indigo-100 transition-all shadow-sm" />
-            </div>
-            <div className="flex items-center gap-2">
-                <SortButton label="NOMBRE" sortKey="name" />
-                <SortButton label="LEGAJO" sortKey="id" />
-            </div>
-        </div>
-        <div className="flex items-center gap-3 w-full xl:w-auto">
-            <input type="file" ref={fileInputRef} onChange={handleExcelImport} className="hidden" accept=".xlsx, .xls" />
-            <button onClick={() => fileInputRef.current?.click()} disabled={isImporting} className="flex-1 xl:flex-none flex items-center justify-center gap-3 px-8 py-5 bg-emerald-600 text-white rounded-[2rem] text-[11px] font-black uppercase shadow-xl hover:brightness-110 transition-all">
-              {isImporting ? <Loader2 className="animate-spin" size={18} /> : <FileSpreadsheet size={18} />} IMPORTAR EXCEL
-            </button>
-            <button onClick={() => setIsAddModalOpen(true)} className="flex-1 xl:flex-none flex items-center justify-center gap-3 px-10 py-5 bg-[#5850ec] text-white rounded-[2rem] text-[11px] font-black uppercase shadow-2xl hover:brightness-110 transition-all">
-              <UserPlus size={18} /> NUEVO INGRESO
-            </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-[3.5rem] shadow-xl border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-[3rem] shadow-xl border border-slate-100 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-[#f8fafc] text-slate-400 h-16 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
-              <tr>
-                <th className="pl-12">Colaborador</th>
-                <th className="text-center">Rol Operativo</th>
-                <th className="text-center">Turno Hab.</th>
-                <th className="text-center">Asistencia</th>
-                <th className="pr-12 text-right">Acciones</th>
+            <thead className="bg-[#f8fafc] text-slate-400 h-14 text-[9px] uppercase font-black tracking-widest border-b border-slate-100">
+              <tr className="text-center">
+                <th className="pl-10 text-left w-64">Colaborador</th>
+                <th>Rol Operativo</th>
+                <th>Turno</th>
+                <th>Asistencia</th>
+                <th className="pr-10 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {displayedStaff.map(s => (
-                <tr key={s.id} className="h-24 hover:bg-slate-50 transition-colors group">
-                  <td className="pl-12">
-                    <div className="flex items-center gap-5">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base shadow-sm ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : 'bg-indigo-50 text-indigo-600'}`}>{s.name.charAt(0)}</div>
-                      <div>
-                        <p className="font-black text-slate-800 text-[13px] uppercase leading-none tracking-tight">{s.name}</p>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-2">LEGAJO: {s.id}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="text-center">
-                    <span className="text-[9px] font-black px-4 py-2 bg-slate-100 rounded-xl text-slate-500 uppercase inline-block">{s.role || '---'}</span>
-                  </td>
-                  <td className="text-center">
-                    <span className="text-[10px] font-black text-slate-400 uppercase italic opacity-70">{s.preferredShift}</span>
-                  </td>
-                  <td className="text-center">
-                    <div className="flex justify-center">
-                      <span className={`px-5 py-2 rounded-2xl text-[9px] font-black uppercase border ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || '') : s.status === StaffStatus.RESERVA ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>{s.status === StaffStatus.ABSENT ? (s.address || 'FALTA') : s.status}</span>
-                    </div>
-                  </td>
-                  <td className="pr-12 text-right">
-                    <div className="flex justify-end gap-3">
-                      <button onClick={() => setEditingStaff(s)} className="p-3 text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all shadow-sm border border-indigo-50"><Edit3 size={18} /></button>
-                      <button onClick={() => onRemoveStaff(s.id)} className="p-3 text-red-500 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-md border border-red-200"><Trash2 size={18} /></button>
+              {Object.entries(groupedStaff).map(([shift, members]) => (
+                <React.Fragment key={shift}>
+                  {selectedShift === 'TODOS' && members.length > 0 && (
+                    <tr className="bg-indigo-50/30">
+                      <td colSpan={5} className="px-10 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="text-[10px] font-black text-indigo-600 tracking-[0.2em] uppercase italic">TURNO {shift} — {members.length} INTEGRANTES</span>
+                          <div className="h-px bg-indigo-100 flex-1" />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  {members.map(s => (
+                    <tr key={s.id} className="h-20 hover:bg-slate-50 transition-colors group">
+                      <td className="pl-10">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
+                          <div>
+                            <p className="font-black text-slate-800 text-[11px] uppercase leading-none">{s.name}</p>
+                            <p className="text-[8px] text-slate-400 font-bold uppercase mt-1.5 tracking-widest">LEG: {s.id}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="text-center">
+                        <span className="text-[9px] font-black px-3 py-1.5 bg-slate-100 rounded-lg text-slate-500 uppercase">{s.role || '---'}</span>
+                      </td>
+                      <td className="text-center">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase italic opacity-70">{s.preferredShift}</span>
+                      </td>
+                      <td className="text-center">
+                        <div className="flex justify-center">
+                          <span className={`px-4 py-1.5 rounded-xl text-[8px] font-black uppercase border ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || '') : s.status === StaffStatus.RESERVA ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>{s.status === StaffStatus.ABSENT ? (s.address || 'FALTA') : s.status}</span>
+                        </div>
+                      </td>
+                      <td className="pr-10 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setEditingStaff(s)} className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={16} /></button>
+                          <button onClick={() => onRemoveStaff(s.id)} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash size={16} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+              {filteredStaff.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center">
+                    <div className="flex flex-col items-center justify-center text-slate-300">
+                      <Search size={40} className="mb-4 opacity-10" />
+                      <p className="text-[10px] font-black uppercase tracking-widest">Sin resultados en este turno</p>
                     </div>
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -303,12 +323,20 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   );
 };
 
-const StatCard: React.FC<{ label: string, value: number, icon: React.ReactNode, color: string }> = ({ label, value, icon, color }) => (
-    <div className={`bg-white rounded-[2.5rem] p-8 flex items-center gap-6 shadow-sm border-l-[12px] border-${color}-600 transition-all hover:translate-y-[-4px]`}>
-        <div className={`p-4 rounded-full bg-${color}-50 text-${color}-600 flex items-center justify-center shrink-0`}>{icon}</div>
-        <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{label}</p>
-            <p className="text-4xl font-black text-slate-900 leading-none">{value}</p>
+const StatCard: React.FC<{ label: string, value: number, icon: React.ReactNode, color: string }> = ({ label, value, icon, color }) => {
+    const colorClasses: Record<string, string> = {
+        indigo: "border-indigo-600 bg-indigo-50 text-indigo-600",
+        emerald: "border-emerald-600 bg-emerald-50 text-emerald-600",
+        amber: "border-amber-600 bg-amber-50 text-amber-600",
+        red: "border-red-600 bg-red-50 text-red-600"
+    };
+    return (
+        <div className={`bg-white rounded-[2rem] p-5 flex items-center gap-4 shadow-sm border-l-[8px] transition-all hover:translate-y-[-2px] ${colorClasses[color]}`}>
+            <div className={`p-2.5 rounded-xl flex items-center justify-center shrink-0 ${color === 'indigo' ? 'bg-indigo-100' : color === 'emerald' ? 'bg-emerald-100' : color === 'amber' ? 'bg-amber-100' : 'bg-red-100'}`}>{icon}</div>
+            <div>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                <p className="text-2xl font-black text-slate-900 leading-none">{value}</p>
+            </div>
         </div>
-    </div>
-);
+    );
+};

@@ -17,25 +17,31 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
     setLoading(true);
     setError(null);
     try {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) {
-        throw new Error("API_KEY no configurada.");
+      // Acceso directo a la variable de entorno según guías
+      if (!process.env.API_KEY) {
+        throw new Error("API_KEY no configurada en el entorno.");
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
       const prompt = `
-        Analiza el siguiente reporte de recolección de residuos de Quilmes. 
-        Los datos están en formato JSON.
+        Analiza el siguiente reporte de recolección de residuos de la ciudad de Quilmes. 
+        Los datos corresponden a rutas logísticas en tiempo real.
         
-        Identifica:
-        1. Las zonas con estado "INCOMPLETE" y resume sus problemas basándote en el "supervisionReport".
-        2. Cualquier anomalía en el tonelaje (muy bajo o muy alto).
-        3. Resume la performance general del turno.
+        Tareas requeridas:
+        1. Identificar rutas con estado "INCOMPLETE" y resumir las causas basándote en el campo "report".
+        2. Detectar anomalías críticas en el tonelaje (por ejemplo, rutas con 0 TN o valores extremadamente altos).
+        3. Evaluar la performance del turno: ¿Qué porcentaje de zonas están completas?
         
-        Datos:
-        ${JSON.stringify(data.map(r => ({ zone: r.zone, status: r.zoneStatus, report: r.supervisionReport, tonnage: r.tonnage })), null, 2)}
+        Datos operativos:
+        ${JSON.stringify(data.map(r => ({ 
+            zona: r.zone, 
+            estado: r.zoneStatus, 
+            reporte_incidencia: r.supervisionReport, 
+            tonelaje: r.tonnage 
+        })), null, 2)}
         
-        Formatea la respuesta en Markdown limpio, usando viñetas. Sé conciso y profesional.
+        Respuesta: Utiliza un formato Markdown limpio y profesional, con viñetas. Sé directo, breve y enfocado en la toma de decisiones logística.
       `;
 
       const response = await ai.models.generateContent({
@@ -43,11 +49,12 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
         contents: prompt,
       });
 
-      setInsight(response.text || "No se pudo generar el análisis.");
+      // Acceso correcto a .text como propiedad
+      setInsight(response.text || "No se pudo extraer el análisis del modelo.");
     } catch (err: any) {
-      console.error(err);
+      console.error("Gemini Error:", err);
       setError({ 
-        message: err.message || "Error al generar el análisis operativo.",
+        message: err.message || "Error inesperado al conectar con el servicio de IA.",
         isConfig: err.message?.includes("configurada")
       });
     } finally {
@@ -85,11 +92,6 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
             <div>
                 <p className="text-sm font-black uppercase">Atención Operativa</p>
                 <p className="text-xs font-bold mt-1 opacity-80">{error.message}</p>
-                {error.isConfig && (
-                  <div className="mt-4 p-3 bg-white/50 rounded-xl text-[10px] font-bold">
-                    Paso: Vercel Dashboard &gt; Settings &gt; Env Vars &gt; Key: API_KEY
-                  </div>
-                )}
             </div>
           </div>
         </div>

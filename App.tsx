@@ -11,7 +11,7 @@ import { getAbsenceStyles } from './styles';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
     MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
-    EXTRA_STAFF 
+    EXTRA_STAFF, STAFF_DB
 } from './constants';
 import { 
     ClipboardList,
@@ -33,7 +33,7 @@ import {
     Clock
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v23_';
+const DB_PREFIX = 'girsu_v24_'; // Incrementamos versión para limpieza
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -84,33 +84,88 @@ const App: React.FC = () => {
     maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' 
   }), []);
 
+  // Función de búsqueda avanzada de personal para manejar Alias de constantes y IDs reales
+  const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
+    if (!searchId) return null;
+    const query = String(searchId).trim().toUpperCase();
+    
+    // 1. Buscar por ID exacto
+    let found = currentStaff.find(s => String(s.id).trim().toUpperCase() === query);
+    if (found) return found;
+
+    // 2. Si es un alias de STAFF_DB (ej: 'PEREZ_RO')
+    if (STAFF_DB[query]) {
+        const dbId = STAFF_DB[query].id;
+        found = currentStaff.find(s => String(s.id).trim().toUpperCase() === String(dbId).toUpperCase());
+        if (found) return found;
+    }
+
+    // 3. Fallback por nombre parcial (último recurso)
+    return currentStaff.find(s => s.name.toUpperCase().includes(query)) || null;
+  }, []);
+
   const getInitialRecordsFromConstants = useCallback((list: StaffMember[]) => {
-    const findS = (id: any) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
-    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findS(m.driver), aux1: findS(m.aux1), aux2: findS(m.aux2), aux3: findS(m.aux3), aux4: findS(m.aux4), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }));
+    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ 
+        id: `${m.zone}-${shift}-${idx}-${Date.now()}`, 
+        zone: m.zone, 
+        internalId: m.interno || '', 
+        domain: m.domain || '', 
+        reinforcement: 'MASTER', 
+        shift: shift as any, 
+        departureTime: '', 
+        dumpTime: '', 
+        tonnage: '', 
+        category: cat as any, 
+        zoneStatus: ZoneStatus.PENDING, 
+        order: idx, 
+        driver: findStaffSecure(m.driver, list), 
+        aux1: findStaffSecure(m.aux1, list), 
+        aux2: findStaffSecure(m.aux2, list), 
+        aux3: findStaffSecure(m.aux3, list), 
+        aux4: findStaffSecure(m.aux4, list), 
+        replacementDriver: null, 
+        replacementAux1: null, 
+        replacementAux2: null, 
+        supervisionReport: '' 
+    }));
     return [
         ...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), 
         ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')
     ];
-  }, []);
+  }, [findStaffSecure]);
 
+  // CARGA DE DATOS PRINCIPAL
   useEffect(() => {
-    setIsLoaded(false);
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
+    if (loadingLock.current === currentModeKey && isLoaded) return;
+    
+    setIsLoaded(false);
     loadingLock.current = currentModeKey;
 
+    // Cargar personal primero
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
     
-    const findS = (id: any, list: StaffMember[]) => list.find(s => String(s.id).trim() === String(id || '').trim()) || null;
+    const mapStaffToIds = (data: any[]) => data.map((r: any) => ({
+        ...r,
+        driver: findStaffSecure(r.driver, initialStaff),
+        aux1: findStaffSecure(r.aux1, initialStaff),
+        aux2: findStaffSecure(r.aux2, initialStaff),
+        aux3: findStaffSecure(r.aux3, initialStaff),
+        aux4: findStaffSecure(r.aux4, initialStaff),
+        replacementDriver: findStaffSecure(r.replacementDriver, initialStaff),
+        replacementAux1: findStaffSecure(r.replacementAux1, initialStaff),
+        replacementAux2: findStaffSecure(r.replacementAux2, initialStaff)
+    }));
 
     if (activeTab === 'adn') {
         const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
         const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
         
-        setRecords(adnRoutes ? JSON.parse(adnRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff) })) : getInitialRecordsFromConstants(initialStaff));
-        setTransferRecords(adnTrans ? JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })) : [createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+        setRecords(adnRoutes ? mapStaffToIds(JSON.parse(adnRoutes)) : getInitialRecordsFromConstants(initialStaff));
+        setTransferRecords(adnTrans ? JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })) : [createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         setShiftManagers(adnMgrs ? JSON.parse(adnMgrs) : { MAÑANA: { supervisor: '', subSupervisor: '', absences: [] }, TARDE: { supervisor: '', subSupervisor: '', absences: [] }, NOCHE: { supervisor: '', subSupervisor: '', absences: [] } });
     } else {
         const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
@@ -119,23 +174,27 @@ const App: React.FC = () => {
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
 
         if (dayRoutes) {
-            setRecords(JSON.parse(dayRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff), replacementDriver: findS(r.replacementDriver, initialStaff), replacementAux1: findS(r.replacementAux1, initialStaff), replacementAux2: findS(r.replacementAux2, initialStaff) })));
+            setRecords(mapStaffToIds(JSON.parse(dayRoutes)));
             const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
-            if (dayTrans) setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
+            if (dayTrans) setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })));
             const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
         } else if (adnRoutes) {
-            setRecords(JSON.parse(adnRoutes).map((r: any) => ({ ...r, id: `${r.zone}-${selectedDate}-${Math.random()}`, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff), zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
-            if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
+            // Clonar ADN para el nuevo día
+            setRecords(mapStaffToIds(JSON.parse(adnRoutes)).map(r => ({ ...r, id: `R-${r.zone}-${selectedDate}-${Math.random()}`, zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
+            if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
             if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
         } else {
+            // Cargar datos de fábrica si no hay nada
             setRecords(getInitialRecordsFromConstants(initialStaff));
             setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         }
     }
-    setIsLoaded(true);
-  }, [selectedDate, activeTab, createEmptyTrans, getInitialRecordsFromConstants]);
+    
+    setTimeout(() => setIsLoaded(true), 50);
+  }, [selectedDate, activeTab, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans]);
 
+  // PERSISTENCIA DE DATOS
   useEffect(() => {
     if (!isLoaded) return;
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
@@ -144,7 +203,7 @@ const App: React.FC = () => {
     try {
         localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
         if (activeTab === 'adn') {
-            localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null }))));
+            localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }))));
             localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
             localStorage.setItem(ADN_MGRS_KEY, JSON.stringify(shiftManagers));
         } else {
@@ -152,7 +211,9 @@ const App: React.FC = () => {
             localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
             localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("Error al persistir datos:", e);
+    }
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, activeTab]);
 
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
@@ -263,7 +324,12 @@ const App: React.FC = () => {
                 <div className="flex-1 p-8 overflow-y-auto bg-slate-50"><StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
                 )
             ) : (
-                <div className="flex h-full items-center justify-center bg-white w-full"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div></div>
+                <div className="flex h-full items-center justify-center bg-white w-full">
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sincronizando con ADN Maestro...</p>
+                    </div>
+                </div>
             )}
         </div>
       </main>

@@ -33,7 +33,7 @@ import {
     Clock
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v22_';
+const DB_PREFIX = 'girsu_v23_';
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -60,7 +60,6 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
   
-  // Referencia para bloquear el guardado durante la carga y evitar colisiones de fecha
   const loadingLock = useRef<string | null>(null);
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -94,11 +93,10 @@ const App: React.FC = () => {
     ];
   }, []);
 
-  // --- EFECTO DE CARGA DE DATOS ---
   useEffect(() => {
     setIsLoaded(false);
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    loadingLock.current = currentModeKey; // Bloqueamos el guardado mientras cargamos
+    loadingLock.current = currentModeKey;
 
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
@@ -121,19 +119,16 @@ const App: React.FC = () => {
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
 
         if (dayRoutes) {
-            // Existe un "Parte Diario" guardado específicamente para hoy
             setRecords(JSON.parse(dayRoutes).map((r: any) => ({ ...r, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff), replacementDriver: findS(r.replacementDriver, initialStaff), replacementAux1: findS(r.replacementAux1, initialStaff), replacementAux2: findS(r.replacementAux2, initialStaff) })));
             const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
             if (dayTrans) setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff) })) })));
             const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
         } else if (adnRoutes) {
-            // No hay parte hoy -> HEREDAMOS AUTOMÁTICAMENTE DEL ADN
             setRecords(JSON.parse(adnRoutes).map((r: any) => ({ ...r, id: `${r.zone}-${selectedDate}-${Math.random()}`, driver: findS(r.driver, initialStaff), aux1: findS(r.aux1, initialStaff), aux2: findS(r.aux2, initialStaff), aux3: findS(r.aux3, initialStaff), aux4: findS(r.aux4, initialStaff), zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
             if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findS(tr.maquinista, initialStaff), encargado: findS(tr.encargado, initialStaff), balancero1: findS(tr.balancero1, initialStaff), auxTolva1: findS(tr.auxTolva1, initialStaff), auxTolva2: findS(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findS(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
             if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
         } else {
-            // Ni parte ni ADN -> Valores por defecto de las constantes
             setRecords(getInitialRecordsFromConstants(initialStaff));
             setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         }
@@ -141,26 +136,23 @@ const App: React.FC = () => {
     setIsLoaded(true);
   }, [selectedDate, activeTab, createEmptyTrans, getInitialRecordsFromConstants]);
 
-  // --- EFECTO DE GUARDADO AUTOMÁTICO ---
   useEffect(() => {
     if (!isLoaded) return;
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    if (loadingLock.current !== currentModeKey) return; // Protegemos contra desincronización de fecha
+    if (loadingLock.current !== currentModeKey) return;
 
     try {
         localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
         if (activeTab === 'adn') {
-            // Guardamos el molde maestro
             localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null }))));
             localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
             localStorage.setItem(ADN_MGRS_KEY, JSON.stringify(shiftManagers));
         } else {
-            // Guardamos el operativo del día específico
             localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }))));
             localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
             localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
         }
-    } catch (e) { console.error("Error al guardar en LocalStorage", e); }
+    } catch (e) {}
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, activeTab]);
 
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
@@ -196,9 +188,6 @@ const App: React.FC = () => {
         <nav className="flex-1 px-4 space-y-2 mt-8">
             <button onClick={() => setActiveTab('parte')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
             <button onClick={() => setActiveTab('personal')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
-            <div className="pt-8 px-4 mt-auto mb-8">
-                <button onClick={() => { if(window.confirm('¿ELIMINAR TODO EL HISTORIAL?')) { localStorage.clear(); window.location.reload(); } }} className="w-full flex items-center gap-2 px-4 py-3 bg-red-950/20 text-red-400 rounded-xl text-[9px] font-black uppercase hover:bg-red-950/40 transition-all border border-red-900/20"><RefreshCcw size={14} /> Reset Total</button>
-            </div>
         </nav>
       </aside>
 

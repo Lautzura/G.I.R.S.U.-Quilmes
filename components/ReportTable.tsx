@@ -1,7 +1,7 @@
 
 import { RouteRecord, StaffStatus, StaffMember, ZoneStatus, AbsenceReason } from '../types';
 import React, { useMemo } from 'react';
-import { Trash2, UserCheck, UserX } from 'lucide-react';
+import { Trash, UserCheck, UserX } from 'lucide-react';
 import { getAbsenceStyles } from '../styles';
 
 interface ReportTableProps {
@@ -244,7 +244,7 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   </td>
                   <td className="text-center bg-white">
                     <button onClick={() => onDeleteRecord(r.id)} className="p-1.5 text-red-300 hover:text-red-600 transition-all">
-                      <Trash2 size={14} />
+                      <Trash size={14} />
                     </button>
                   </td>
                 </tr>

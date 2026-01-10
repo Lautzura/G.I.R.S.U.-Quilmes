@@ -33,7 +33,7 @@ import {
     Clock
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v24_'; 
+const DB_PREFIX = 'girsu_v25_'; 
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -60,7 +60,8 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
   
-  const loadingLock = useRef<string | null>(null);
+  // Referencia para saber qué datos tenemos actualmente en memoria para no pisar otros días
+  const lastLoadedKey = useRef<string | null>(null);
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
@@ -87,16 +88,13 @@ const App: React.FC = () => {
   const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
     if (!searchId) return null;
     const query = String(searchId).trim().toUpperCase();
-    
     let found = currentStaff.find(s => String(s.id).trim().toUpperCase() === query);
     if (found) return found;
-
     if (STAFF_DB[query]) {
         const dbId = STAFF_DB[query].id;
         found = currentStaff.find(s => String(s.id).trim().toUpperCase() === String(dbId).toUpperCase());
         if (found) return found;
     }
-
     return currentStaff.find(s => s.name.toUpperCase().includes(query)) || null;
   }, []);
 
@@ -130,13 +128,16 @@ const App: React.FC = () => {
     ];
   }, [findStaffSecure]);
 
+  // EFECTO 1: CARGA DE DATOS (Solo ocurre al cambiar fecha o pestaña ADN)
   useEffect(() => {
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    if (loadingLock.current === currentModeKey && isLoaded) return;
+    
+    // Si ya estamos cargados en esta clave, no hacemos nada
+    if (isLoaded && lastLoadedKey.current === currentModeKey) return;
     
     setIsLoaded(false);
-    loadingLock.current = currentModeKey;
 
+    // Cargar personal (Base global siempre presente)
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
@@ -157,49 +158,62 @@ const App: React.FC = () => {
         const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
         const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
         const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
-        
         setRecords(adnRoutes ? mapStaffToIds(JSON.parse(adnRoutes)) : getInitialRecordsFromConstants(initialStaff));
         setTransferRecords(adnTrans ? JSON.parse(adnTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })) : [createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
         setShiftManagers(adnMgrs ? JSON.parse(adnMgrs) : { MAÑANA: { supervisor: '', subSupervisor: '', absences: [] }, TARDE: { supervisor: '', subSupervisor: '', absences: [] }, NOCHE: { supervisor: '', subSupervisor: '', absences: [] } });
     } else {
         const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
-        const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
-        const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
-        const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
-
         if (dayRoutes) {
             setRecords(mapStaffToIds(JSON.parse(dayRoutes)));
             const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
             if (dayTrans) setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })));
             const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
-        } else if (adnRoutes) {
-            setRecords(mapStaffToIds(JSON.parse(adnRoutes)).map(r => ({ ...r, id: `R-${r.zone}-${selectedDate}-${Math.random()}`, zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
-            if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
-            if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
         } else {
-            setRecords(getInitialRecordsFromConstants(initialStaff));
-            setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+            // Si no hay datos del día, intentamos clonar ADN o usar Fábrica
+            const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
+            if (adnRoutes) {
+                setRecords(mapStaffToIds(JSON.parse(adnRoutes)).map(r => ({ ...r, id: `R-${r.zone}-${selectedDate}-${Math.random()}`, zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
+                const adnTrans = localStorage.getItem(ADN_TRANS_KEY);
+                if (adnTrans) setTransferRecords(JSON.parse(adnTrans).map((tr: any) => ({ ...tr, id: `TR-${tr.shift}-${selectedDate}`, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) })));
+                const adnMgrs = localStorage.getItem(ADN_MGRS_KEY);
+                if (adnMgrs) setShiftManagers(JSON.parse(adnMgrs));
+            } else {
+                setRecords(getInitialRecordsFromConstants(initialStaff));
+                setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+            }
         }
     }
     
-    setTimeout(() => setIsLoaded(true), 50);
+    // Marcar como cargado y actualizar la clave actual
+    lastLoadedKey.current = currentModeKey;
+    setIsLoaded(true);
   }, [selectedDate, activeTab, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans]);
 
+  // EFECTO 2: GUARDADO AUTOMÁTICO (Solo ocurre si hay cambios reales y los datos coinciden con la clave)
   useEffect(() => {
     if (!isLoaded) return;
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    if (loadingLock.current !== currentModeKey) return;
+    
+    // CRÍTICO: No guardar si la clave en memoria (lastLoadedKey) no coincide con la clave de la interfaz (currentModeKey)
+    // Esto evita pisar datos de un día con los del día anterior durante el cambio de fecha.
+    if (lastLoadedKey.current !== currentModeKey) return;
 
     try {
+        // Guardar personal siempre
         localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
+
+        // Preparar datos para persistencia (reemplazar objetos por IDs)
+        const persistentRecords = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
+        const persistentTrans = transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }));
+
         if (activeTab === 'adn') {
-            localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }))));
-            localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
+            localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(persistentRecords));
+            localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(persistentTrans));
             localStorage.setItem(ADN_MGRS_KEY, JSON.stringify(shiftManagers));
         } else {
-            localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }))));
-            localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }))));
+            localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(persistentRecords));
+            localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(persistentTrans));
             localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
         }
     } catch (e) {
@@ -264,7 +278,7 @@ const App: React.FC = () => {
                         <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1.5 rounded-full hover:bg-slate-50 text-slate-400"><ChevronRight size={14} /></button>
                         {selectedDate !== today && <button onClick={() => setSelectedDate(today)} className="p-1.5 bg-slate-100 text-slate-500 rounded-full hover:text-indigo-600 transition-all ml-1 shadow-sm"><RotateCcw size={14} /></button>}
                     </div>
-                    <button onClick={() => { if(window.confirm('¿VOLVER A SINCRONIZAR ESTE DÍA CON EL ADN MAESTRO? Se perderán los cambios manuales de hoy.')) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); localStorage.removeItem(`${DAILY_TRANS_KEY}${selectedDate}`); localStorage.removeItem(`${DAILY_MGRS_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-indigo-50 text-indigo-600 p-3 rounded-2xl border border-indigo-100 shadow-sm hover:bg-indigo-100 transition-all group" title="Sincronizar con ADN"><Wand2 size={18} className="group-hover:rotate-12 transition-transform" /></button>
+                    <button onClick={() => { if(window.confirm('¿SINCRONIZAR CON ADN MAESTRO?')) { localStorage.removeItem(`${DAILY_DATA_KEY}${selectedDate}`); window.location.reload(); } }} className="bg-indigo-50 text-indigo-600 p-3 rounded-2xl border border-indigo-100 shadow-sm hover:bg-indigo-100 transition-all group" title="Sincronizar con ADN"><Wand2 size={18} className="group-hover:rotate-12 transition-transform" /></button>
                     <button onClick={() => setActiveTab('adn')} className="bg-amber-500 text-white p-3 rounded-2xl shadow-md hover:bg-amber-600 transition-all"><Database size={18} /></button>
                     <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-slate-800 text-white p-3 rounded-2xl shadow-md"><Plus size={18} /></button>
                     <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-3 rounded-2xl shadow-md"><CheckCircle2 size={18} /></button>
@@ -280,14 +294,13 @@ const App: React.FC = () => {
             {isLoaded ? (
                 <>
                     <div className={`px-6 py-3 border-b flex items-center gap-6 shrink-0 z-40 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
-                        {/* Selector de Turno - Siempre visible */}
+                        {/* Selector de Turno Global */}
                         <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
                             {['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'].map(f => (
                                 <button key={f} onClick={() => setShiftFilter(f as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === f ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{f}</button>
                             ))}
                         </div>
 
-                        {/* Elementos exclusivos de la pestaña Parte Diario o ADN */}
                         {activeTab !== 'personal' && (
                             <>
                                 <div className="h-6 w-px bg-slate-200 mx-2" />
@@ -320,7 +333,18 @@ const App: React.FC = () => {
                             </div>
                         ) : (
                             <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
-                                <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                                {/* Padrón de Personal - Sincronizado con shiftFilter */}
+                                <StaffManagement 
+                                    staffList={staffList} 
+                                    onUpdateStaff={handleUpdateStaff} 
+                                    onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} 
+                                    onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} 
+                                    onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} 
+                                    records={records} 
+                                    selectedShift={shiftFilter} 
+                                    searchTerm={searchTerm} 
+                                    onSearchChange={setSearchTerm} 
+                                />
                             </div>
                         )}
                     </div>
@@ -329,7 +353,7 @@ const App: React.FC = () => {
                 <div className="flex h-full items-center justify-center bg-white w-full">
                     <div className="flex flex-col items-center gap-4">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sincronizando con ADN Maestro...</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preparando datos...</p>
                     </div>
                 </div>
             )}

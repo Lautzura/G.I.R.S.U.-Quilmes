@@ -127,10 +127,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     });
   }, [shiftStaff, searchTerm, activeReasonFilter, activeRoleFilter]);
 
-  const groupedStaff = useMemo(() => {
+  // Fix: Explicitly type groupedStaff to help TypeScript infer 'members' in the JSX map as StaffMember[].
+  const groupedStaff: Record<string, StaffMember[]> = useMemo(() => {
     let sorted = [...filteredStaff].sort((a, b) => {
-      const valA = (a[sortConfig.key] || '').toString().toUpperCase();
-      const valB = (b[sortConfig.key] || '').toString().toUpperCase();
+      const valA = (a[sortConfig.key as keyof StaffMember] || '').toString().toUpperCase();
+      const valB = (b[sortConfig.key as keyof StaffMember] || '').toString().toUpperCase();
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -260,17 +261,17 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             <tbody className="divide-y divide-slate-100">
               {Object.entries(groupedStaff).map(([shift, members]) => (
                 <React.Fragment key={shift}>
-                  {selectedShift === 'TODOS' && members.length > 0 && (
+                  {selectedShift === 'TODOS' && (members as StaffMember[]).length > 0 && (
                     <tr className="bg-indigo-50/30">
                       <td colSpan={5} className="px-10 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black text-indigo-600 tracking-[0.2em] uppercase italic">TURNO {shift} — {members.length} INTEGRANTES</span>
+                          <span className="text-[10px] font-black text-indigo-600 tracking-[0.2em] uppercase italic">TURNO {shift} — {(members as StaffMember[]).length} INTEGRANTES</span>
                           <div className="h-px bg-indigo-100 flex-1" />
                         </div>
                       </td>
                     </tr>
                   )}
-                  {members.map(s => (
+                  {(members as StaffMember[]).map(s => (
                     <tr key={s.id} className="h-20 hover:bg-slate-50 transition-colors group">
                       <td className="pl-10">
                         <div className="flex items-center gap-4">

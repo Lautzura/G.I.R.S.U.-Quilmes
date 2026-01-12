@@ -32,11 +32,10 @@ import {
     UserCircle,
     Clock,
     Download,
-    Upload,
-    CloudCheck
+    Upload
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v27_'; // Incrementado de v26 a v27 para forzar limpieza de personal antiguo
+const DB_PREFIX = 'girsu_v27_'; 
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -306,7 +305,7 @@ const App: React.FC = () => {
                   <div className="flex items-center gap-4">
                       <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU <span className="text-indigo-600">OPERATIVO</span></h1>
                       {isSaving && <div className="flex items-center gap-2 text-indigo-500 animate-pulse"><RefreshCcw size={12} className="animate-spin"/><span className="text-[8px] font-black uppercase tracking-widest">Sincronizando...</span></div>}
-                      {!isSaving && isLoaded && <div className="flex items-center gap-2 text-emerald-500"><CloudCheck size={14}/><span className="text-[8px] font-black uppercase tracking-widest">Guardado Local</span></div>}
+                      {!isSaving && isLoaded && <div className="flex items-center gap-2 text-emerald-500"><Check size={14}/><span className="text-[8px] font-black uppercase tracking-widest">Guardado Local</span></div>}
                   </div>
               )}
           </div>
@@ -362,9 +361,9 @@ const App: React.FC = () => {
                             <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
                                 <div className="flex-1 bg-white rounded-3xl shadow-xl border overflow-hidden flex flex-col border-slate-200">
                                     {subTab === 'TRANSFERENCIA' ? (
-                                        <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, curr, uIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: curr, unitIdx: uIdx })} onUpdateStaff={handleUpdateStaff} />
+                                        <TransferTable isMasterMode={activeTab === 'adn'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(prev => prev.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, currentValueId, unitIdx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId, unitIdx })} onUpdateStaff={handleUpdateStaff} />
                                     ) : (
-                                        <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(prev => prev.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, curr) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: curr })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
+                                        <ReportTable isMasterMode={activeTab === 'adn'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, field, value) => setRecords(prev => prev.map(r => r.id === id ? {...r, [field]: value} : r))} onDeleteRecord={id => setRecords(prev => prev.filter(r => r.id !== id))} onOpenPicker={(id, field, role, currentValueId) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
                                     )}
                                 </div>
                             </div>

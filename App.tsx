@@ -30,10 +30,13 @@ import {
     X,
     Check,
     UserCircle,
-    Clock
+    Clock,
+    Download,
+    Upload,
+    CloudCheck
 } from 'lucide-react';
 
-const DB_PREFIX = 'girsu_v25_'; 
+const DB_PREFIX = 'girsu_v27_'; // Incrementado de v26 a v27 para forzar limpieza de personal antiguo
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const ADN_TRANS_KEY = `${DB_PREFIX}adn_trans`;
@@ -59,9 +62,10 @@ const App: React.FC = () => {
   const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA'>('GENERAL');
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
-  // Referencia para saber qué datos tenemos actualmente en memoria para no pisar otros días
   const lastLoadedKey = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
@@ -128,16 +132,13 @@ const App: React.FC = () => {
     ];
   }, [findStaffSecure]);
 
-  // EFECTO 1: CARGA DE DATOS (Solo ocurre al cambiar fecha o pestaña ADN)
+  // CARGAR DATOS
   useEffect(() => {
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    
-    // Si ya estamos cargados en esta clave, no hacemos nada
     if (isLoaded && lastLoadedKey.current === currentModeKey) return;
     
     setIsLoaded(false);
-
-    // Cargar personal (Base global siempre presente)
+    
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
@@ -170,7 +171,6 @@ const App: React.FC = () => {
             const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
             if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
         } else {
-            // Si no hay datos del día, intentamos clonar ADN o usar Fábrica
             const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
             if (adnRoutes) {
                 setRecords(mapStaffToIds(JSON.parse(adnRoutes)).map(r => ({ ...r, id: `R-${r.zone}-${selectedDate}-${Math.random()}`, zoneStatus: ZoneStatus.PENDING, tonnage: '', departureTime: '' })));
@@ -185,41 +185,73 @@ const App: React.FC = () => {
         }
     }
     
-    // Marcar como cargado y actualizar la clave actual
     lastLoadedKey.current = currentModeKey;
     setIsLoaded(true);
   }, [selectedDate, activeTab, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans]);
 
-  // EFECTO 2: GUARDADO AUTOMÁTICO (Solo ocurre si hay cambios reales y los datos coinciden con la clave)
+  // GUARDAR DATOS
   useEffect(() => {
     if (!isLoaded) return;
     const currentModeKey = activeTab === 'adn' ? 'adn' : selectedDate;
-    
-    // CRÍTICO: No guardar si la clave en memoria (lastLoadedKey) no coincide con la clave de la interfaz (currentModeKey)
-    // Esto evita pisar datos de un día con los del día anterior durante el cambio de fecha.
     if (lastLoadedKey.current !== currentModeKey) return;
 
-    try {
-        // Guardar personal siempre
-        localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
+    setIsSaving(true);
+    const timeout = setTimeout(() => {
+        try {
+            localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
+            const persistentRecords = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
+            const persistentTrans = transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }));
 
-        // Preparar datos para persistencia (reemplazar objetos por IDs)
-        const persistentRecords = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
-        const persistentTrans = transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }));
-
-        if (activeTab === 'adn') {
-            localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(persistentRecords));
-            localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(persistentTrans));
-            localStorage.setItem(ADN_MGRS_KEY, JSON.stringify(shiftManagers));
-        } else {
-            localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(persistentRecords));
-            localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(persistentTrans));
-            localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
+            if (activeTab === 'adn') {
+                localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(persistentRecords));
+                localStorage.setItem(ADN_TRANS_KEY, JSON.stringify(persistentTrans));
+                localStorage.setItem(ADN_MGRS_KEY, JSON.stringify(shiftManagers));
+            } else {
+                localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(persistentRecords));
+                localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(persistentTrans));
+                localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
+            }
+            setIsSaving(false);
+        } catch (e) {
+            console.error("Error guardando:", e);
         }
-    } catch (e) {
-        console.error("Error al persistir datos:", e);
-    }
+    }, 500);
+    return () => clearTimeout(timeout);
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, activeTab]);
+
+  const handleExportDB = () => {
+    const fullDB: Record<string, any> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(DB_PREFIX)) {
+            fullDB[key] = localStorage.getItem(key);
+        }
+    }
+    const blob = new Blob([JSON.stringify(fullDB, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `GIRSU_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+  };
+
+  const handleImportDB = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        try {
+            const imported = JSON.parse(evt.target?.result as string);
+            if (window.confirm("¿ESTÁS SEGURO? Esto reemplazará TODA la base de datos actual.")) {
+                Object.keys(imported).forEach(key => {
+                    if (key.startsWith(DB_PREFIX)) localStorage.setItem(key, imported[key]);
+                });
+                window.location.reload();
+            }
+        } catch (err) { alert("Archivo de backup inválido"); }
+    };
+    reader.readAsText(file);
+  };
 
   const handleUpdateStaff = (updatedMember: StaffMember, originalId?: string) => {
     const idToFind = String(originalId || updatedMember.id).trim();
@@ -255,6 +287,11 @@ const App: React.FC = () => {
             <button onClick={() => setActiveTab('parte')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'parte' ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><ClipboardList size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Parte Diario</span></button>
             <button onClick={() => setActiveTab('personal')} className={`w-full flex items-center gap-3 px-6 py-4 rounded-2xl transition-all ${activeTab === 'personal' ? 'bg-indigo-600 shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}><Users size={20} /><span className="text-[11px] font-black uppercase tracking-widest">Personal</span></button>
         </nav>
+        <div className="p-4 border-t border-white/5 space-y-2">
+            <button onClick={handleExportDB} className="w-full flex items-center gap-2 px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5 transition-all"><Download size={16}/> Copia Seguridad</button>
+            <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-2 px-4 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/5 transition-all"><Upload size={16}/> Importar Datos</button>
+            <input type="file" ref={fileInputRef} onChange={handleImportDB} className="hidden" accept=".json" />
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
@@ -266,7 +303,11 @@ const App: React.FC = () => {
                       <h1 className="text-sm font-black uppercase tracking-tight italic">PLANTILLA ADN MAESTRO</h1>
                   </div>
               ) : (
-                  <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU <span className="text-indigo-600">OPERATIVO</span></h1>
+                  <div className="flex items-center gap-4">
+                      <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase italic">GIRSU <span className="text-indigo-600">OPERATIVO</span></h1>
+                      {isSaving && <div className="flex items-center gap-2 text-indigo-500 animate-pulse"><RefreshCcw size={12} className="animate-spin"/><span className="text-[8px] font-black uppercase tracking-widest">Sincronizando...</span></div>}
+                      {!isSaving && isLoaded && <div className="flex items-center gap-2 text-emerald-500"><CloudCheck size={14}/><span className="text-[8px] font-black uppercase tracking-widest">Guardado Local</span></div>}
+                  </div>
               )}
           </div>
           <div className="flex items-center gap-3 relative z-[100]">
@@ -294,13 +335,11 @@ const App: React.FC = () => {
             {isLoaded ? (
                 <>
                     <div className={`px-6 py-3 border-b flex items-center gap-6 shrink-0 z-40 ${activeTab === 'adn' ? 'bg-amber-100/50 border-amber-200' : 'bg-white border-slate-200'}`}>
-                        {/* Selector de Turno Global */}
                         <div className="flex p-1 bg-slate-100 rounded-xl shrink-0">
                             {['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'].map(f => (
                                 <button key={f} onClick={() => setShiftFilter(f as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-lg transition-all ${shiftFilter === f ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>{f}</button>
                             ))}
                         </div>
-
                         {activeTab !== 'personal' && (
                             <>
                                 <div className="h-6 w-px bg-slate-200 mx-2" />
@@ -309,7 +348,6 @@ const App: React.FC = () => {
                                     <button onClick={() => setSubTab('REPASO')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'REPASO' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>REPASO</button>
                                     <button onClick={() => setSubTab('TRANSFERENCIA')} className={`px-5 py-1.5 text-[9px] font-black rounded-lg transition-all ${subTab === 'TRANSFERENCIA' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>TOLVA</button>
                                 </div>
-                                
                                 {shiftFilter !== 'TODOS' && (
                                     <div className="flex-1 flex items-center gap-4 bg-slate-50 px-4 py-1.5 rounded-2xl border border-slate-100">
                                         <Clock size={16} className="text-slate-400" />
@@ -319,7 +357,6 @@ const App: React.FC = () => {
                             </>
                         )}
                     </div>
-                    
                     <div className="flex-1 overflow-hidden flex flex-col">
                         {activeTab !== 'personal' ? (
                             <div className="flex-1 p-4 overflow-hidden flex flex-col gap-4">
@@ -333,18 +370,7 @@ const App: React.FC = () => {
                             </div>
                         ) : (
                             <div className="flex-1 p-8 overflow-y-auto bg-slate-50">
-                                {/* Padrón de Personal - Sincronizado con shiftFilter */}
-                                <StaffManagement 
-                                    staffList={staffList} 
-                                    onUpdateStaff={handleUpdateStaff} 
-                                    onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} 
-                                    onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} 
-                                    onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} 
-                                    records={records} 
-                                    selectedShift={shiftFilter} 
-                                    searchTerm={searchTerm} 
-                                    onSearchChange={setSearchTerm} 
-                                />
+                                <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onBulkAddStaff={newS => setStaffList(prev => deduplicateStaff([...prev, ...newS]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
                             </div>
                         )}
                     </div>
@@ -353,7 +379,7 @@ const App: React.FC = () => {
                 <div className="flex h-full items-center justify-center bg-white w-full">
                     <div className="flex flex-col items-center gap-4">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Preparando datos...</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Protegiendo persistencia...</p>
                     </div>
                 </div>
             )}

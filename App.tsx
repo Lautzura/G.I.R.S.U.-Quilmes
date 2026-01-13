@@ -1,5 +1,4 @@
-
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
@@ -26,9 +25,6 @@ import {
     Wand2,
     Calendar,
     RotateCcw,
-    Download,
-    Upload,
-    ShieldCheck,
     Globe,
     WifiOff
 } from 'lucide-react';
@@ -47,8 +43,10 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
 };
 
 const App: React.FC = () => {
-  // 🔄 Servicio Híbrido: Gestiona el fallo del servidor automáticamente
-  const dataService = useMemo(() => new HybridDataService('http://10.1.0.250:8080'), []);
+  // 🔄 URL dinámica: Usa la variable de Vercel o la IP local por defecto
+  const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:8080';
+  
+  const dataService = useMemo(() => new HybridDataService(API_URL), [API_URL]);
   
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [activeTab, setActiveTab] = useState<'parte' | 'personal'>('parte');
@@ -73,8 +71,6 @@ const App: React.FC = () => {
   const [pickerSearch, setPickerSearch] = useState('');
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
-
-  const importFileRef = useRef<HTMLInputElement>(null);
 
   const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
     if (!searchId) return null;
@@ -224,7 +220,7 @@ const App: React.FC = () => {
       } finally {
         setIsSaving(false);
       }
-    }, 1500); // Mayor debounce para red
+    }, 1500); 
     return () => clearTimeout(timeout);
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService, serializeDayData]);
 
@@ -265,43 +261,6 @@ const App: React.FC = () => {
       };
     }));
   }, []);
-
-  const handleExportDB = () => {
-    const fullDB: Record<string, string | null> = {};
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('girsu_v27_')) {
-            fullDB[key] = localStorage.getItem(key);
-        }
-    }
-    const blob = new Blob([JSON.stringify(fullDB, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `GIRSU_BACKUP_${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportDB = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!window.confirm("¿Importar backup? Se recargará la app.")) {
-        if (importFileRef.current) importFileRef.current.value = '';
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-        try {
-            const data = JSON.parse(evt.target?.result as string);
-            Object.keys(data).forEach(key => {
-                if (key.startsWith('girsu_v27_')) localStorage.setItem(key, data[key]);
-            });
-            window.location.reload();
-        } catch (err) { alert("Error de formato."); }
-    };
-    reader.readAsText(file);
-  };
 
   const handleApplyMasterData = async () => {
     if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual.")) {
@@ -364,14 +323,6 @@ const App: React.FC = () => {
                     <span className="text-[8px] font-black text-amber-400 uppercase leading-none">Modo Local (Sin Red)</span>
                 </div>
             )}
-            
-            <button onClick={handleExportDB} className="w-full flex items-center gap-3 px-4 py-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all mt-4">
-                <Download size={14} /> Exportar Backup
-            </button>
-            <button onClick={() => importFileRef.current?.click()} className="w-full flex items-center gap-3 px-4 py-2 text-[9px] font-black uppercase text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-all">
-                <Upload size={14} /> Importar Backup
-            </button>
-            <input type="file" ref={importFileRef} onChange={handleImportDB} accept=".json" className="hidden" />
         </div>
       </aside>
 

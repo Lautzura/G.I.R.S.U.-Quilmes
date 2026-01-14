@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
 import { ReportTable } from './components/ReportTable';
@@ -6,7 +7,8 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-import { HybridDataService } from './services/HybridDataService';
+// Fix: Match the file name 'hybriddataservice.ts' exactly to resolve casing conflict in the compilation environment
+import { HybridDataService } from './services/hybriddataservice';
 import { DayData } from './services/DataService';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
@@ -43,7 +45,6 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
 };
 
 const App: React.FC = () => {
-  // 🔄 URL dinámica: Usa la variable de Vercel o la IP local por defecto
   const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:8080';
   
   const dataService = useMemo(() => new HybridDataService(API_URL), [API_URL]);
@@ -318,7 +319,7 @@ const App: React.FC = () => {
                     <span className="text-[8px] font-black text-emerald-400 uppercase leading-none">Servidor Activo (Red)</span>
                 </div>
             ) : (
-                <div className="px-4 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20 flex items-center gap-3 animate-pulse">
+                <div className="px-4 py-2 bg-amber-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-3 animate-pulse">
                     <WifiOff size={14} className="text-amber-400" />
                     <span className="text-[8px] font-black text-amber-400 uppercase leading-none">Modo Local (Sin Red)</span>
                 </div>

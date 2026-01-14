@@ -4,6 +4,7 @@ import { LocalStorageDataService } from './LocalStorageDataService';
 import { StaffMember } from '../types';
 
 /**
+ * Fix: Consolidating implementation here to resolve casing conflict.
  * Servicio inteligente: Gestiona el failover entre remoto y local.
  * Si el remoto falla (Timeout o Red), conmuta a modo local sin errores visibles.
  */
@@ -33,10 +34,7 @@ export class HybridDataService implements DataService {
   }
 
   async saveStaff(staff: StaffMember[]): Promise<void> {
-    // Guardar en local siempre es instantáneo y seguro
     await this.local.saveStaff(staff);
-    
-    // Intentar guardar en remoto de forma asíncrona para no bloquear
     this.remote.saveStaff(staff).then(() => {
       this.isOnline = true;
     }).catch(() => {

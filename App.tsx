@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
 import { ReportTable } from './components/ReportTable';
@@ -7,7 +6,7 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-// Fix: Match the file name 'hybriddataservice.ts' exactly to resolve casing conflict in the compilation environment
+// Fix: Use lowercase filename to match the root file and avoid casing conflict
 import { HybridDataService } from './services/hybriddataservice';
 import { DayData } from './services/DataService';
 import { 
@@ -426,7 +425,7 @@ const App: React.FC = () => {
                               ) : (
                                 <ReportTable 
                                   isMasterMode={subTab === 'MAESTRO'} 
-                                  data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' || subTab === 'MAESTRO' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} 
+                                  data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' || subTab === 'MAESTRO' ? (r.category !== 'RECOLECCIÓN') : (r.category === 'REPASO_LATERAL')))} 
                                   onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} 
                                   onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} 
                                   onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} 

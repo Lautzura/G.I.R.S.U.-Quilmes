@@ -6,8 +6,8 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-// Fix: Use lowercase filename to match the root file and avoid casing conflict
-import { HybridDataService } from './services/hybriddataservice';
+// IMPORTACIÓN CORREGIDA: Apunta al archivo con Mayúsculas
+import { HybridDataService } from './services/HybridDataService';
 import { DayData } from './services/DataService';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,

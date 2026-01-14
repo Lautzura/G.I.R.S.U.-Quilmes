@@ -20,8 +20,6 @@ const DAILY_MGRS_KEY  = `${DB_PREFIX}mgrs_`;
 
 export class LocalStorageDataService implements DataService {
 
-  /* ================= PERSONAL ================= */
-
   async loadStaff(): Promise<StaffMember[]> {
     const raw = localStorage.getItem(STAFF_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -30,8 +28,6 @@ export class LocalStorageDataService implements DataService {
   async saveStaff(staff: StaffMember[]): Promise<void> {
     localStorage.setItem(STAFF_KEY, JSON.stringify(staff));
   }
-
-  /* ================= DIA ================= */
 
   async loadDay(date: string): Promise<DayData | null> {
     const rawRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${date}`);
@@ -62,8 +58,6 @@ export class LocalStorageDataService implements DataService {
       JSON.stringify(data.managers)
     );
   }
-
-  /* ================= MAESTRO ================= */
 
   async loadMaster(): Promise<DayData | null> {
     const rawRoutes = localStorage.getItem(ADN_ROUTES_KEY);

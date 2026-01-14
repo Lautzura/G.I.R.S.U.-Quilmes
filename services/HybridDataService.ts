@@ -1,13 +1,14 @@
-import { DataService, DayData } from './DataService';
+
+import { IDataService, DayData } from './DataService';
 import { RemoteApiDataService } from './RemoteApiDataService';
 import { LocalStorageDataService } from './LocalStorageDataService';
 import { StaffMember } from '../types';
 
 /**
  * Servicio inteligente: Gestiona el failover entre remoto y local.
- * Si el remoto falla (Timeout o Red), conmuta a modo local sin errores visibles.
+ * Implementa IDataService para permitir inyección de dependencias.
  */
-export class HybridDataService implements DataService {
+export class HybridDataService implements IDataService {
   private remote: RemoteApiDataService;
   private local: LocalStorageDataService;
   public isOnline: boolean = true;

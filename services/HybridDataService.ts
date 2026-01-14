@@ -4,7 +4,6 @@ import { LocalStorageDataService } from './LocalStorageDataService';
 import { StaffMember } from '../types';
 
 /**
- * Fix: Consolidating implementation here to resolve casing conflict.
  * Servicio inteligente: Gestiona el failover entre remoto y local.
  * Si el remoto falla (Timeout o Red), conmuta a modo local sin errores visibles.
  */

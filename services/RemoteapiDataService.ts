@@ -25,12 +25,9 @@ export class RemoteApiDataService implements DataService {
       return response;
     } catch (e) {
       clearTimeout(id);
-      // Lanzamos un error genérico para que HybridDataService lo capture
       throw new Error("Network Error or Timeout");
     }
   }
-
-  /* ================= PERSONAL ================= */
 
   async loadStaff(): Promise<StaffMember[]> {
     try {
@@ -52,8 +49,6 @@ export class RemoteApiDataService implements DataService {
     } catch (e) { }
   }
 
-  /* ================= PARTE DIARIO ================= */
-
   async loadDay(date: string): Promise<DayData | null> {
     try {
       const response = await this.fetchWithTimeout(`${this.baseURL}/day/${date}`);
@@ -73,8 +68,6 @@ export class RemoteApiDataService implements DataService {
       });
     } catch (e) { }
   }
-
-  /* ================= ADN MAESTRO ================= */
 
   async loadMaster(): Promise<DayData | null> {
     try {

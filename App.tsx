@@ -1,19 +1,20 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
+import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
 import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-// IMPORTACIÓN CORREGIDA: Apunta al archivo con Mayúsculas
-import { HybridDataService } from './services/HybridDataService';
-import { DayData } from './services/DataService';
+import { IDataService } from './services/DataService';
+import { DayDataDTO } from './dtos/RouteDTO';
+import { createEmptyTransfer } from './domain/transferFactory';
+import { createInitialRouteRecords, createRouteRecord } from './domain/routeFactory';
 import { 
-    MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
-    MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
-    EXTRA_STAFF
-} from './constants';
+    toRouteRecordDTO, toTransferRecordDTO, 
+    fromRouteRecordDTO, fromTransferRecordDTO 
+} from './utils/converters';
+import { EXTRA_STAFF } from './constants';
 import { 
     ClipboardList,
     Users,
@@ -43,11 +44,11 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   });
 };
 
-const App: React.FC = () => {
-  const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:8080';
-  
-  const dataService = useMemo(() => new HybridDataService(API_URL), [API_URL]);
-  
+interface AppProps {
+  dataService: IDataService;
+}
+
+const App: React.FC<AppProps> = ({ dataService }) => {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [activeTab, setActiveTab] = useState<'parte' | 'personal'>('parte');
   const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA' | 'MAESTRO'>('GENERAL');
@@ -72,95 +73,44 @@ const App: React.FC = () => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
-    if (!searchId) return null;
-    const query = String(searchId).trim().toUpperCase();
-    return currentStaff.find(s => String(s.id).trim().toUpperCase() === query) || currentStaff.find(s => s.name.toUpperCase().includes(query)) || null;
+  const hydrateDayData = useCallback((dto: DayDataDTO, staff: StaffMember[]) => {
+    setRecords(dto.records.map(r => fromRouteRecordDTO(r, staff)));
+    setTransferRecords(dto.transfers.map(tr => fromTransferRecordDTO(tr, staff)));
+    setShiftManagers(dto.managers);
   }, []);
 
-  const mapStaffToIds = useCallback((recs: any[], currentStaff: StaffMember[]) => recs.map((r: any) => ({
-    ...r,
-    driver: findStaffSecure(r.driver, currentStaff),
-    aux1: findStaffSecure(r.aux1, currentStaff),
-    aux2: findStaffSecure(r.aux2, currentStaff),
-    aux3: findStaffSecure(r.aux3, currentStaff),
-    aux4: findStaffSecure(r.aux4, currentStaff),
-    replacementDriver: findStaffSecure(r.replacementDriver, currentStaff),
-    replacementAux1: findStaffSecure(r.replacementAux1, currentStaff),
-    replacementAux2: findStaffSecure(r.replacementAux2, currentStaff)
-  })), [findStaffSecure]);
-
-  const createEmptyTrans = useCallback((s: string): TransferRecord => ({ 
-    id: `TR-${s}`, shift: s as any, 
-    units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, 
-    maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' 
-  }), []);
-
-  const getInitialRecordsFromConstants = useCallback((list: StaffMember[]) => {
-    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ 
-        id: `${m.zone}-${shift}-${idx}-${Date.now()}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findStaffSecure(m.driver, list), aux1: findStaffSecure(m.aux1, list), aux2: findStaffSecure(m.aux2, list), aux3: findStaffSecure(m.aux3, list), aux4: findStaffSecure(m.aux4, list), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' 
-    }));
-    return [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
-  }, [findStaffSecure]);
+  const initDefaultDay = useCallback((staff: StaffMember[]) => {
+    setRecords(createInitialRouteRecords(staff));
+    setTransferRecords([
+      createEmptyTransfer('MAÑANA'), 
+      createEmptyTransfer('TARDE'), 
+      createEmptyTransfer('NOCHE')
+    ]);
+    setShiftManagers({
+      MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
+      TARDE: { supervisor: '', subSupervisor: '', absences: [] },
+      NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
+    });
+  }, []);
 
   const loadDayData = async (date: string, staff: StaffMember[]) => {
-    const dayData = await dataService.loadDay(date);
+    const dto = await dataService.loadDay(date);
     setIsOnline(dataService.isOnline);
-    if (!dayData) {
-      setRecords(getInitialRecordsFromConstants(staff));
-      setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
-      setShiftManagers({
-        MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
-        TARDE: { supervisor: '', subSupervisor: '', absences: [] },
-        NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
-      });
+    if (!dto) {
+      initDefaultDay(staff);
       return;
     }
-    setRecords(mapStaffToIds(dayData.records, staff));
-    setTransferRecords(dayData.transfers.map(tr => ({
-        ...tr,
-        maquinista: findStaffSecure(tr.maquinista, staff),
-        encargado: findStaffSecure(tr.encargado, staff),
-        balancero1: findStaffSecure(tr.balancero1, staff),
-        auxTolva1: findStaffSecure(tr.auxTolva1, staff),
-        auxTolva2: findStaffSecure(tr.auxTolva2, staff),
-        units: tr.units.map((u: any) => ({
-          ...u,
-          driver: findStaffSecure(u.driver, staff),
-          trips: u.trips || [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
-        })) as [TransferUnit, TransferUnit, TransferUnit]
-    })));
-    setShiftManagers(dayData.managers);
+    hydrateDayData(dto, staff);
   };
 
   const loadMasterData = async (staff: StaffMember[]) => {
-    const masterData = await dataService.loadMaster();
+    const dto = await dataService.loadMaster();
     setIsOnline(dataService.isOnline);
-    if (!masterData) {
-      setRecords(getInitialRecordsFromConstants(staff));
-      setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
-      setShiftManagers({
-        MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
-        TARDE: { supervisor: '', subSupervisor: '', absences: [] },
-        NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
-      });
+    if (!dto) {
+      initDefaultDay(staff);
       return;
     }
-    setRecords(mapStaffToIds(masterData.records, staff));
-    setTransferRecords(masterData.transfers.map(tr => ({
-        ...tr,
-        maquinista: findStaffSecure(tr.maquinista, staff),
-        encargado: findStaffSecure(tr.encargado, staff),
-        balancero1: findStaffSecure(tr.balancero1, staff),
-        auxTolva1: findStaffSecure(tr.auxTolva1, staff),
-        auxTolva2: findStaffSecure(tr.auxTolva2, staff),
-        units: tr.units.map((u: any) => ({
-          ...u,
-          driver: findStaffSecure(u.driver, staff),
-          trips: u.trips || [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }]
-        })) as [TransferUnit, TransferUnit, TransferUnit]
-    })));
-    setShiftManagers(masterData.managers);
+    hydrateDayData(dto, staff);
   };
 
   useEffect(() => {
@@ -175,32 +125,11 @@ const App: React.FC = () => {
       setIsLoaded(true);
     };
     loadData();
-  }, [selectedDate, subTab]);
+  }, [selectedDate, subTab, dataService]);
 
-  const serializeDayData = useCallback((): DayData => ({
-    records: records.map(r => ({
-      ...r,
-      driver: (r.driver?.id as any) || null,
-      aux1: (r.aux1?.id as any) || null,
-      aux2: (r.aux2?.id as any) || null,
-      aux3: (r.aux3?.id as any) || null,
-      aux4: (r.aux4?.id as any) || null,
-      replacementDriver: (r.replacementDriver?.id as any) || null,
-      replacementAux1: (r.replacementAux1?.id as any) || null,
-      replacementAux2: (r.replacementAux2?.id as any) || null,
-    })),
-    transfers: transferRecords.map(tr => ({
-      ...tr,
-      maquinista: (tr.maquinista?.id as any) || null,
-      encargado: (tr.encargado?.id as any) || null,
-      balancero1: (tr.balancero1?.id as any) || null,
-      auxTolva1: (tr.auxTolva1?.id as any) || null,
-      auxTolva2: (tr.auxTolva2?.id as any) || null,
-      units: tr.units.map(u => ({
-        ...u,
-        driver: (u.driver?.id as any) || null
-      }))
-    })) as any,
+  const serializeDayData = useCallback((): DayDataDTO => ({
+    records: records.map(toRouteRecordDTO),
+    transfers: transferRecords.map(toTransferRecordDTO),
     managers: shiftManagers
   }), [records, transferRecords, shiftManagers]);
 
@@ -210,9 +139,9 @@ const App: React.FC = () => {
     const timeout = setTimeout(async () => {
       try {
         await dataService.saveStaff(staffList);
-        const data = serializeDayData();
-        if (subTab === 'MAESTRO') await dataService.saveMaster(data);
-        else await dataService.saveDay(selectedDate, data);
+        const dto = serializeDayData();
+        if (subTab === 'MAESTRO') await dataService.saveMaster(dto);
+        else await dataService.saveDay(selectedDate, dto);
         setIsOnline(dataService.isOnline);
         syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: staffList });
       } catch (e) {
@@ -264,19 +193,9 @@ const App: React.FC = () => {
 
   const handleApplyMasterData = async () => {
     if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual.")) {
-        const adnData = await dataService.loadMaster();
-        if (adnData) {
-            setRecords(mapStaffToIds(adnData.records, staffList));
-            setTransferRecords(adnData.transfers.map((tr: any) => ({ 
-                ...tr, 
-                maquinista: findStaffSecure(tr.maquinista, staffList), 
-                encargado: findStaffSecure(tr.encargado, staffList), 
-                balancero1: findStaffSecure(tr.balancero1, staffList), 
-                auxTolva1: findStaffSecure(tr.auxTolva1, staffList), 
-                auxTolva2: findStaffSecure(tr.auxTolva2, staffList), 
-                units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, staffList), trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] })) 
-            })));
-            setShiftManagers(adnData.managers);
+        const dto = await dataService.loadMaster();
+        if (dto) {
+            hydrateDayData(dto, staffList);
         }
     }
   };
@@ -425,7 +344,10 @@ const App: React.FC = () => {
                               ) : (
                                 <ReportTable 
                                   isMasterMode={subTab === 'MAESTRO'} 
-                                  data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' || subTab === 'MAESTRO' ? (r.category !== 'RECOLECCIÓN') : (r.category === 'REPASO_LATERAL')))} 
+                                  data={records.filter(r => 
+                                    (shiftFilter === 'TODOS' || r.shift === shiftFilter) && 
+                                    (subTab === 'MAESTRO' ? true : (subTab === 'GENERAL' ? r.category === 'RECOLECCIÓN' : r.category === 'REPASO_LATERAL'))
+                                  )} 
                                   onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} 
                                   onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} 
                                   onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} 
@@ -472,7 +394,7 @@ const App: React.FC = () => {
       )}
 
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
-      <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { setRecords(prev => [...prev, { id: `NEW-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'EXTRA', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
+      <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { setRecords(prev => [...prev, createRouteRecord({ zone: z, shift: s as any, order: records.length, category: 'RECOLECCIÓN' })]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
     </div>
   );
 };

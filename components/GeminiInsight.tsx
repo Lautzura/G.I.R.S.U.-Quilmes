@@ -6,9 +6,10 @@ import { Sparkles, Loader2, FileText, AlertCircle } from 'lucide-react';
 
 interface GeminiInsightProps {
   data: RouteRecord[];
+  dailyContext: any; // Contexto estructurado del día
 }
 
-export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
+export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data, dailyContext }) => {
   const [insight, setInsight] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{message: string, isConfig?: boolean} | null>(null);
@@ -17,39 +18,42 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
     setLoading(true);
     setError(null);
     try {
-      // Acceso directo a la variable de entorno según guías
       if (!process.env.API_KEY) {
         throw new Error("API_KEY no configurada en el entorno.");
       }
 
+      // Initialize AI client as per SDK guidelines
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
       const prompt = `
-        Analiza el siguiente reporte de recolección de residuos de la ciudad de Quilmes. 
-        Los datos corresponden a rutas logísticas en tiempo real.
+        Analiza el siguiente contexto operativo de recolección de residuos (GIRSU Quilmes).
+        Utiliza los datos estructurados para dar un diagnóstico ejecutivo.
         
-        Tareas requeridas:
-        1. Identificar rutas con estado "INCOMPLETE" y resumir las causas basándote en el campo "report".
-        2. Detectar anomalías críticas en el tonelaje (por ejemplo, rutas con 0 TN o valores extremadamente altos).
-        3. Evaluar la performance del turno: ¿Qué porcentaje de zonas están completas?
+        CONTEXTO ESTRUCTURADO:
+        ${JSON.stringify(dailyContext, null, 2)}
         
-        Datos operativos:
-        ${JSON.stringify(data.map(r => ({ 
-            zona: r.zone, 
-            estado: r.zoneStatus, 
-            reporte_incidencia: r.supervisionReport, 
-            tonelaje: r.tonnage 
+        REGISTROS DETALLADOS DE INCIDENCIAS:
+        ${JSON.stringify(data.filter(r => r.zoneStatus !== 'COMPLETA').map(r => ({
+            zona: r.zone,
+            incidencia: r.supervisionReport || "Sin reporte",
+            estado: r.zoneStatus
         })), null, 2)}
         
-        Respuesta: Utiliza un formato Markdown limpio y profesional, con viñetas. Sé directo, breve y enfocado en la toma de decisiones logística.
+        TAREAS:
+        1. Resumen de Flota: ¿Cuántos camiones (internos) están operando y si hay zonas sin camión asignado?
+        2. Análisis de Dotación: Detectar si hay zonas con falta de auxiliares o choferes.
+        3. Alertas Críticas: Menciona zonas incompletas y la razón reportada.
+        
+        Formato: Markdown profesional con emojis logísticos. Sé breve y contundente.
       `;
 
+      // Use gemini-3-pro-preview for complex reasoning tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: prompt,
       });
 
-      // Acceso correcto a .text como propiedad
+      // Extract text using the .text property directly as per latest SDK guidelines
       setInsight(response.text || "No se pudo extraer el análisis del modelo.");
     } catch (err: any) {
       console.error("Gemini Error:", err);
@@ -81,12 +85,12 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
           className="w-full md:w-auto flex items-center justify-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-xl shadow-indigo-200 text-[11px] font-black uppercase tracking-widest active:scale-95"
         >
           {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
-          {loading ? 'Procesando Datos...' : 'Generar Reporte Ejecutivo'}
+          {loading ? 'Analizando Contexto...' : 'Generar Reporte Ejecutivo'}
         </button>
       </div>
 
       {error && (
-        <div className="p-6 bg-red-50 text-red-700 rounded-3xl mb-6 border-2 border-red-100 animate-in slide-in-from-top">
+        <div className="p-6 bg-red-50 text-red-700 rounded-3xl mb-6 border-2 border-red-100">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
             <div>
@@ -108,7 +112,7 @@ export const GeminiInsight: React.FC<GeminiInsightProps> = ({ data }) => {
       {!insight && !loading && !error && (
         <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-[2rem]">
             <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">
-                Esperando comando para analizar incidencias del turno actual...
+                Listo para procesar el contexto operativo de {data.length} zonas...
             </p>
         </div>
       )}

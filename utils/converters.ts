@@ -12,7 +12,7 @@ export const findStaffById = (id: any, staffList: StaffMember[]): StaffMember | 
 };
 
 /**
- * UI -> DTO (Conversión para guardado)
+ * UI -> DTO
  */
 export const toRouteRecordDTO = (r: RouteRecord): RouteRecordDTO => ({
   ...r,
@@ -42,19 +42,14 @@ export const toTransferRecordDTO = (tr: TransferRecord): TransferRecordDTO => ({
   auxTolva1: tr.auxTolva1?.id || null,
   auxTolva2: tr.auxTolva2?.id || null,
   auxTolva3: tr.auxTolva3?.id || null,
-  auxTransferencia1: findStaffById(tr.auxTransferencia1, [])?.id || null, // placeholder fix
-  auxTransferencia2: findStaffById(tr.auxTransferencia2, [])?.id || null, // placeholder fix
-  balancero2: tr.balancero2?.id || null,
-  lonero: tr.lonero?.id || null,
-  suplenciaLona: tr.suplenciaLona?.id || null,
 } as any);
 
 /**
- * DTO -> UI (Hidratación para carga)
+ * DTO -> UI (Aquí es donde recuperamos las rutas "perdidas")
  */
 export const fromRouteRecordDTO = (dto: RouteRecordDTO, staffList: StaffMember[]): RouteRecord => ({
   ...dto,
-  category: dto.category || 'RECOLECCIÓN',
+  category: dto.category || 'RECOLECCIÓN', // Si no tiene categoría, es Recolección
   driver: findStaffById(dto.driver, staffList),
   aux1: findStaffById(dto.aux1, staffList),
   aux2: findStaffById(dto.aux2, staffList),

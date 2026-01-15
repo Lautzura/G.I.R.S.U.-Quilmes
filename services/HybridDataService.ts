@@ -8,6 +8,7 @@ import { StaffMember } from '../types';
  * Servicio inteligente: Gestiona el failover entre remoto y local.
  * Implementa IDataService para permitir inyección de dependencias.
  */
+// Fix: Moved class implementation here to resolve casing conflict with index.tsx and compiler root files.
 export class HybridDataService implements IDataService {
   private remote: RemoteApiDataService;
   private local: LocalStorageDataService;

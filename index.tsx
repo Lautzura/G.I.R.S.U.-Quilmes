@@ -2,8 +2,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-// Fix: Use consistent PascalCase for service imports to resolve casing conflicts.
-import { HybridDataService } from './services/HybridDataService';
+// Fix: Use lowercase path for service imports to match the root file name casing and resolve conflict.
+import { HybridDataService } from './services/hybriddataservice';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

@@ -346,7 +346,10 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                                   isMasterMode={subTab === 'MAESTRO'} 
                                   data={records.filter(r => 
                                     (shiftFilter === 'TODOS' || r.shift === shiftFilter) && 
-                                    (subTab === 'MAESTRO' ? true : (subTab === 'GENERAL' ? r.category === 'RECOLECCIÓN' : r.category === 'REPASO_LATERAL'))
+                                    (subTab === 'MAESTRO' ? true : 
+                                      subTab === 'GENERAL' 
+                                        ? (r.category === 'RECOLECCIÓN' || !r.category) 
+                                        : r.category === 'REPASO_LATERAL')
                                   )} 
                                   onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} 
                                   onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} 

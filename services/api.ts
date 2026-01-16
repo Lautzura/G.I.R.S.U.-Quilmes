@@ -1,43 +1,33 @@
 
-import { RouteRecord, StaffMember } from '../types';
+import { HybridDataService } from './HybridDataService';
+import { StaffMember } from '../types';
+import { DayDataDTO } from '../dtos/RouteDTO';
 
-// CAMBIA ESTA URL POR LA DE TU SERVIDOR EN LA RED
-const BASE_URL = 'http://TU-IP-SERVIDOR:3000/api'; 
+// URL de la API centralizada
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:8080';
 
+// Instancia ÚNICA para todo el ecosistema (Partes y Sistema General)
+export const dataService = new HybridDataService(API_URL);
+
+/**
+ * ApiService: Interfaz simplificada para el consumo de componentes.
+ * Mantiene la compatibilidad con el sistema de partes y el sistema general.
+ */
 export const ApiService = {
-  async fetchRecords(): Promise<RouteRecord[]> {
-    try {
-      const res = await fetch(`${BASE_URL}/records`);
-      if (!res.ok) throw new Error('Error al cargar registros');
-      return await res.json();
-    } catch (e) {
-      console.warn("Usando datos locales: Servidor de red no disponible.");
-      return []; // Retorna vacio para usar mocks si falla
-    }
-  },
+  // Estado de conexión (reactivo)
+  get isOnline() { return dataService.isOnline; },
 
-  async updateRecord(id: string, data: Partial<RouteRecord>) {
-    return fetch(`${BASE_URL}/records/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-  },
+  // Gestión de Personal
+  loadStaff: () => dataService.loadStaff(),
+  saveStaff: (staff: StaffMember[]) => dataService.saveStaff(staff),
 
-  async fetchStaff(): Promise<StaffMember[]> {
-    try {
-      const res = await fetch(`${BASE_URL}/staff`);
-      return await res.json();
-    } catch (e) {
-      return [];
-    }
-  },
+  // Gestión de Partes Diarios
+  loadDay: (date: string) => dataService.loadDay(date),
+  saveDay: (date: string, data: DayDataDTO) => dataService.saveDay(date, data),
 
-  async updateStaffMember(member: StaffMember) {
-    return fetch(`${BASE_URL}/staff/${member.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(member)
-    });
-  }
+  // Gestión de Plantilla (ADN Maestro)
+  loadMaster: () => dataService.loadMaster(),
+  saveMaster: (data: DayDataDTO) => dataService.saveMaster(data)
 };
+
+export default ApiService;

@@ -1,9 +1,7 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-// Fix: Use lowercase path to match the root file specified in the compilation context and avoid casing conflicts on case-insensitive filesystems.
-import { HybridDataService } from './services/hybriddataservice';
+import { HybridDataService } from './services/HybridDataService';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

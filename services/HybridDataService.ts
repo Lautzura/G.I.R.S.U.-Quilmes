@@ -1,10 +1,12 @@
+
 import { IDataService, DayData } from './DataService';
 import { RemoteApiDataService } from './RemoteApiDataService';
 import { LocalStorageDataService } from './LocalStorageDataService';
 import { StaffMember } from '../types';
 
 /**
- * Servicio inteligente: Gestiona el failover entre remoto y local.
+ * Fix: Consolidated implementation in this file to resolve 'differs only in casing' error 
+ * with the root file specified for compilation.
  */
 export class HybridDataService implements IDataService {
   private remote: RemoteApiDataService;

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord } from './types';
 import { ReportTable } from './components/ReportTable';
@@ -28,9 +29,11 @@ import {
     Calendar,
     RotateCcw,
     Globe,
-    WifiOff
+    WifiOff,
+    Save
 } from 'lucide-react';
 
+// Canal de sincronización mejorado
 const syncChannel = new BroadcastChannel('girsu_sync_v27');
 
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
@@ -55,7 +58,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(dataService.isOnline);
   
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
@@ -72,6 +75,18 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [pickerSearch, setPickerSearch] = useState('');
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
+
+  // Escuchar actualizaciones de otros sistemas (ej: el sistema general agrega personal)
+  useEffect(() => {
+    const handleSync = (event: MessageEvent) => {
+      if (event.data.type === 'STAFF_UPDATE') {
+        console.log('Sincronización recibida desde otro sistema...');
+        setStaffList(deduplicateStaff(event.data.payload));
+      }
+    };
+    syncChannel.addEventListener('message', handleSync);
+    return () => syncChannel.removeEventListener('message', handleSync);
+  }, []);
 
   const hydrateDayData = useCallback((dto: DayDataDTO, staff: StaffMember[]) => {
     setRecords(dto.records.map(r => fromRouteRecordDTO(r, staff)));
@@ -96,11 +111,19 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const loadDayData = async (date: string, staff: StaffMember[]) => {
     const dto = await dataService.loadDay(date);
     setIsOnline(dataService.isOnline);
-    if (!dto) {
-      initDefaultDay(staff);
+    
+    if (dto) {
+      hydrateDayData(dto, staff);
       return;
     }
-    hydrateDayData(dto, staff);
+
+    const masterDto = await dataService.loadMaster();
+    if (masterDto) {
+      hydrateDayData(masterDto, staff);
+      return;
+    }
+
+    initDefaultDay(staff);
   };
 
   const loadMasterData = async (staff: StaffMember[]) => {
@@ -120,8 +143,12 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       setIsOnline(dataService.isOnline);
       const initialStaff = deduplicateStaff(staffRaw.length ? staffRaw : EXTRA_STAFF);
       setStaffList(initialStaff);
-      if (subTab === 'MAESTRO') await loadMasterData(initialStaff);
-      else await loadDayData(selectedDate, initialStaff);
+      
+      if (subTab === 'MAESTRO') {
+        await loadMasterData(initialStaff);
+      } else {
+        await loadDayData(selectedDate, initialStaff);
+      }
       setIsLoaded(true);
     };
     loadData();
@@ -133,6 +160,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     managers: shiftManagers
   }), [records, transferRecords, shiftManagers]);
 
+  // Autoguardado y sincronización
   useEffect(() => {
     if (!isLoaded) return;
     setIsSaving(true);
@@ -140,9 +168,13 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       try {
         await dataService.saveStaff(staffList);
         const dto = serializeDayData();
-        if (subTab === 'MAESTRO') await dataService.saveMaster(dto);
-        else await dataService.saveDay(selectedDate, dto);
+        if (subTab === 'MAESTRO') {
+          await dataService.saveMaster(dto);
+        } else {
+          await dataService.saveDay(selectedDate, dto);
+        }
         setIsOnline(dataService.isOnline);
+        // Notificar al canal de sincronización
         syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: staffList });
       } catch (e) {
         setIsOnline(false);
@@ -153,10 +185,24 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     return () => clearTimeout(timeout);
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService, serializeDayData]);
 
+  // Implementación de addNewStaff integrada en el sistema
+  const onAddStaff = useCallback((newMember: StaffMember) => {
+    const updatedList = deduplicateStaff([...staffList, newMember]);
+    setStaffList(updatedList);
+    
+    // Guardado inmediato para asegurar persistencia antes de sincronizar
+    dataService.saveStaff(updatedList).then(() => {
+       setIsOnline(dataService.isOnline);
+       syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
+    }).catch(() => setIsOnline(false));
+  }, [staffList, dataService]);
+
   const handleUpdateStaff = useCallback((updatedMember: StaffMember, originalId?: string) => {
     const idToFind = String(originalId || updatedMember.id).trim();
-    setStaffList(prev => deduplicateStaff(prev.map(s => String(s.id).trim() === idToFind ? updatedMember : s)));
+    const updatedList = deduplicateStaff(staffList.map(s => String(s.id).trim() === idToFind ? updatedMember : s));
+    setStaffList(updatedList);
 
+    // Actualizar referencias en records
     setRecords(prev => prev.map(r => {
       const match = (s: StaffMember | null) => s?.id === idToFind;
       if (!match(r.driver) && !match(r.aux1) && !match(r.aux2) && !match(r.aux3) && !match(r.aux4) && 
@@ -174,6 +220,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       };
     }));
 
+    // Actualizar referencias en transferencias
     setTransferRecords(prev => prev.map(tr => {
       const match = (s: StaffMember | null) => s?.id === idToFind;
       const unitsMatch = tr.units.some(u => match(u.driver));
@@ -189,14 +236,24 @@ const App: React.FC<AppProps> = ({ dataService }) => {
         units: tr.units.map(u => match(u.driver) ? { ...u, driver: updatedMember } : u) as any
       };
     }));
-  }, []);
+  }, [staffList]);
 
   const handleApplyMasterData = async () => {
-    if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual.")) {
+    if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual con la plantilla configurada.")) {
         const dto = await dataService.loadMaster();
         if (dto) {
             hydrateDayData(dto, staffList);
+        } else {
+            alert("No hay una plantilla ADN Maestro guardada.");
         }
+    }
+  };
+
+  const handleSaveAsMaster = async () => {
+    if (window.confirm("¿Establecer este día como el nuevo ADN Maestro? Esto afectará a todos los días futuros que se carguen por primera vez.")) {
+      const dto = serializeDayData();
+      await dataService.saveMaster(dto);
+      alert("Configuración guardada como ADN Maestro con éxito.");
     }
   };
 
@@ -276,9 +333,14 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                  </div>
 
                  <div className="flex items-center gap-3">
-                    <button onClick={handleApplyMasterData} className="p-4 bg-indigo-50 text-indigo-600 rounded-2xl shadow-sm hover:bg-indigo-100 transition-all border border-indigo-100" title="Cargar ADN Maestro">
-                        <Wand2 size={22} />
-                    </button>
+                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                        <button onClick={handleApplyMasterData} className="p-3 text-indigo-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Cargar ADN Maestro">
+                            <Wand2 size={20} />
+                        </button>
+                        <button onClick={handleSaveAsMaster} className="p-3 text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Guardar como ADN Maestro">
+                            <Save size={20} />
+                        </button>
+                    </div>
 
                     <button 
                         onClick={() => setSubTab(subTab === 'MAESTRO' ? 'GENERAL' : 'MAESTRO')}
@@ -323,7 +385,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                   <div className="flex-1 overflow-hidden flex flex-col">
                     {activeTab === 'personal' ? (
                       <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                        <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
                       </div>
                     ) : (
                       <div className="flex-1 overflow-hidden flex flex-col p-4 relative">
@@ -331,7 +393,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                             {subTab === 'MAESTRO' && (
                                 <div className="bg-amber-500 text-white px-6 py-3 flex items-center justify-between shrink-0">
                                     <span className="text-[10px] font-black uppercase tracking-widest italic flex items-center gap-2">
-                                        <Database size={14} /> Editando Plantilla ADN Maestro (Cambios guardados local y remoto)
+                                        <Database size={14} /> Editando Plantilla ADN Maestro (Los cambios aquí afectan a los días nuevos)
                                     </span>
                                     <button onClick={() => setSubTab('GENERAL')} className="text-[9px] font-black bg-white/20 px-3 py-1 rounded-lg uppercase">Salir de edición</button>
                                 </div>

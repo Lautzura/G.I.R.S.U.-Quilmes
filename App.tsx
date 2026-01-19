@@ -10,8 +10,8 @@ import { IDataService } from './services/DataService';
 import { DayDataDTO } from './dtos/RouteDTO';
 import { createEmptyTransfer } from './domain/transferFactory';
 import { createInitialRouteRecords, createRouteRecord } from './domain/routeFactory';
-// Fix: Use camelCase import to match the resolved file name and avoid casing collision errors
-import { dayDataDTOToState, stateToDayDataDTO } from './services/dayMapper';
+// Fix: Importación corregida a PascalCase
+import { dayDataDTOToState, stateToDayDataDTO } from './services/DayMapper';
 import { EXTRA_STAFF } from './constants';
 import { 
     ClipboardList,
@@ -46,8 +46,6 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
 
 /**
  * Función CRÍTICA: Calcula el estado de un colaborador para una fecha específica.
- * Si tiene una falta cargada pero la fecha de consulta está fuera del rango, 
- * devuelve el estado PRESENTE, pero mantiene el registro en el padrón.
  */
 export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string): StaffStatus => {
     if (staff.status !== StaffStatus.ABSENT) return staff.status;
@@ -55,19 +53,11 @@ export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string):
     const startDate = staff.absenceStartDate;
     const returnDate = staff.absenceReturnDate;
 
-    // Si no hay fechas definidas, es una falta puntual "eterna" hasta cambio manual
     if (!startDate) return StaffStatus.ABSENT;
-
-    // 1. Antes de empezar la falta -> PRESENTE (Falta futura programada)
     if (targetDate < startDate) return StaffStatus.PRESENT;
-
-    // 2. Si es indefinida y ya empezó -> AUSENTE
     if (staff.isIndefiniteAbsence) return StaffStatus.ABSENT;
-
-    // 3. Si hay fecha de regreso y ya se cumplió -> PRESENTE (Falta finalizada)
     if (returnDate && targetDate >= returnDate) return StaffStatus.PRESENT;
 
-    // 4. En cualquier otro caso dentro del rango -> AUSENTE
     return StaffStatus.ABSENT;
 };
 
@@ -100,7 +90,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  // Mapeamos el staff list para que el Parte Diario refleje el estado dinámico
   const effectiveStaffList = useMemo(() => {
     return staffList.map(s => ({
         ...s,
@@ -174,7 +163,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     loadData();
   }, [selectedDate, subTab, dataService]);
 
-  // Autoguardado
   useEffect(() => {
     if (!isLoaded) return;
     setIsSaving(true);
@@ -257,7 +245,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
 
   const sortedPickerList = useMemo(() => {
       const query = pickerSearch.trim().toLowerCase();
-      // Usamos effectiveStaffList para que el selector sepa quién está realmente de falta HOY
       let filtered = effectiveStaffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
       return filtered.sort((a, b) => { const isASelected = a.id === pickerState?.currentValueId; const isBSelected = b.id === pickerState?.currentValueId; if (isASelected && !isBSelected) return -1; if (!isASelected && isBSelected) return 1; return a.name.localeCompare(b.name); }).slice(0, 40);
   }, [effectiveStaffList, pickerSearch, pickerState?.currentValueId]);

@@ -1,5 +1,6 @@
 
-import { HybridDataService } from './HybridDataService';
+// Fix: Use lowercase import to avoid casing conflict with hybriddataservice.ts which exists in the project
+import { HybridDataService } from './hybriddataservice';
 import { StaffMember } from '../types';
 import { DayDataDTO } from '../dtos/RouteDTO';
 

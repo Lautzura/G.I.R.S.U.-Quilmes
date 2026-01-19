@@ -33,8 +33,8 @@ import {
     Save
 } from 'lucide-react';
 
-// Canal de sincronización mejorado
-const syncChannel = new BroadcastChannel('girsu_sync_v27');
+// Canal de sincronización universal para el ecosistema GIRSU
+const syncChannel = new BroadcastChannel('sync_channel');
 
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   const seen = new Set();
@@ -76,11 +76,9 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  // Escuchar actualizaciones de otros sistemas (ej: el sistema general agrega personal)
   useEffect(() => {
     const handleSync = (event: MessageEvent) => {
       if (event.data.type === 'STAFF_UPDATE') {
-        console.log('Sincronización recibida desde otro sistema...');
         setStaffList(deduplicateStaff(event.data.payload));
       }
     };
@@ -111,18 +109,15 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const loadDayData = async (date: string, staff: StaffMember[]) => {
     const dto = await dataService.loadDay(date);
     setIsOnline(dataService.isOnline);
-    
     if (dto) {
       hydrateDayData(dto, staff);
       return;
     }
-
     const masterDto = await dataService.loadMaster();
     if (masterDto) {
       hydrateDayData(masterDto, staff);
       return;
     }
-
     initDefaultDay(staff);
   };
 
@@ -143,7 +138,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       setIsOnline(dataService.isOnline);
       const initialStaff = deduplicateStaff(staffRaw.length ? staffRaw : EXTRA_STAFF);
       setStaffList(initialStaff);
-      
       if (subTab === 'MAESTRO') {
         await loadMasterData(initialStaff);
       } else {
@@ -160,7 +154,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     managers: shiftManagers
   }), [records, transferRecords, shiftManagers]);
 
-  // Autoguardado y sincronización
   useEffect(() => {
     if (!isLoaded) return;
     setIsSaving(true);
@@ -174,8 +167,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
           await dataService.saveDay(selectedDate, dto);
         }
         setIsOnline(dataService.isOnline);
-        // Notificar al canal de sincronización
-        syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: staffList });
       } catch (e) {
         setIsOnline(false);
       } finally {
@@ -185,24 +176,36 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     return () => clearTimeout(timeout);
   }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService, serializeDayData]);
 
-  // Implementación de addNewStaff integrada en el sistema
-  const onAddStaff = useCallback((newMember: StaffMember) => {
+  const onAddStaff = useCallback(async (newMember: StaffMember) => {
     const updatedList = deduplicateStaff([...staffList, newMember]);
     setStaffList(updatedList);
-    
-    // Guardado inmediato para asegurar persistencia antes de sincronizar
-    dataService.saveStaff(updatedList).then(() => {
-       setIsOnline(dataService.isOnline);
-       syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
-    }).catch(() => setIsOnline(false));
+    try {
+      await dataService.saveStaff(updatedList);
+      setIsOnline(dataService.isOnline);
+      syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
+    } catch (e) {
+      setIsOnline(false);
+    }
+  }, [staffList, dataService]);
+
+  const onBulkAddStaff = useCallback(async (newStaff: StaffMember[]) => {
+    const updatedList = deduplicateStaff([...staffList, ...newStaff]);
+    setStaffList(updatedList);
+    try {
+      await dataService.saveStaff(updatedList);
+      setIsOnline(dataService.isOnline);
+      syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
+      alert(`Se han importado ${newStaff.length} registros con éxito.`);
+    } catch (e) {
+      setIsOnline(false);
+      alert('Error al persistir la importación masiva.');
+    }
   }, [staffList, dataService]);
 
   const handleUpdateStaff = useCallback((updatedMember: StaffMember, originalId?: string) => {
     const idToFind = String(originalId || updatedMember.id).trim();
     const updatedList = deduplicateStaff(staffList.map(s => String(s.id).trim() === idToFind ? updatedMember : s));
     setStaffList(updatedList);
-
-    // Actualizar referencias en records
     setRecords(prev => prev.map(r => {
       const match = (s: StaffMember | null) => s?.id === idToFind;
       if (!match(r.driver) && !match(r.aux1) && !match(r.aux2) && !match(r.aux3) && !match(r.aux4) && 
@@ -219,8 +222,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
         replacementAux2: match(r.replacementAux2) ? updatedMember : r.replacementAux2,
       };
     }));
-
-    // Actualizar referencias en transferencias
     setTransferRecords(prev => prev.map(tr => {
       const match = (s: StaffMember | null) => s?.id === idToFind;
       const unitsMatch = tr.units.some(u => match(u.driver));
@@ -236,24 +237,22 @@ const App: React.FC<AppProps> = ({ dataService }) => {
         units: tr.units.map(u => match(u.driver) ? { ...u, driver: updatedMember } : u) as any
       };
     }));
+    syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
   }, [staffList]);
 
   const handleApplyMasterData = async () => {
     if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual con la plantilla configurada.")) {
         const dto = await dataService.loadMaster();
-        if (dto) {
-            hydrateDayData(dto, staffList);
-        } else {
-            alert("No hay una plantilla ADN Maestro guardada.");
-        }
+        if (dto) hydrateDayData(dto, staffList);
+        else alert("No hay una plantilla ADN Maestro guardada.");
     }
   };
 
   const handleSaveAsMaster = async () => {
-    if (window.confirm("¿Establecer este día como el nuevo ADN Maestro? Esto afectará a todos los días futuros que se carguen por primera vez.")) {
+    if (window.confirm("¿Establecer este día como el nuevo ADN Maestro?")) {
       const dto = serializeDayData();
       await dataService.saveMaster(dto);
-      alert("Configuración guardada como ADN Maestro con éxito.");
+      alert("ADN Maestro guardado con éxito.");
     }
   };
 
@@ -280,12 +279,10 @@ const App: React.FC<AppProps> = ({ dataService }) => {
             <h2 className="text-xl font-black italic text-white uppercase leading-none tracking-tight">QUILMES</h2>
             <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2">G.I.R.S.U.</p>
         </div>
-        
         <nav className="flex-1 px-4 space-y-2 mt-8">
             <NavButton active={activeTab === 'parte'} onClick={() => setActiveTab('parte')} icon={<ClipboardList size={18}/>} label="Parte Diario" />
             <NavButton active={activeTab === 'personal'} onClick={() => setActiveTab('personal')} icon={<Users size={18}/>} label="Personal" />
         </nav>
-
         <div className="p-4 border-t border-white/5 space-y-2">
             <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2">Conectividad</p>
             {isOnline ? (
@@ -307,56 +304,27 @@ const App: React.FC<AppProps> = ({ dataService }) => {
           <div className="flex items-center gap-4">
               <h1 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">{activeTab === 'parte' ? 'Parte Diario' : 'Personal'}</h1>
               {isSaving && <div className="text-indigo-600 animate-pulse text-[8px] font-black uppercase tracking-widest">Sincronizando...</div>}
-              {!isOnline && <div className="text-amber-600 text-[8px] font-black uppercase tracking-widest border border-amber-200 px-2 py-1 rounded bg-amber-50">Guardado Local Activado</div>}
           </div>
-          
           <div className="flex items-center gap-4 relative z-[100]">
              {activeTab === 'parte' && (
                <div className="flex items-center gap-4">
                  <div className="flex items-center border rounded-full px-5 py-2.5 bg-white border-slate-200 shadow-sm transition-all hover:border-slate-300">
                     <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronLeft size={18} /></button>
                     <div className="flex items-center gap-2 px-4 border-x mx-2">
-                        <span className="text-[12px] font-black text-slate-700 uppercase tracking-tight w-24 text-center">
-                            {selectedDate.split('-').reverse().join('/')}
-                        </span>
+                        <span className="text-[12px] font-black text-slate-700 uppercase tracking-tight w-24 text-center">{selectedDate.split('-').reverse().join('/')}</span>
                         <Calendar size={14} className="text-slate-400" />
                     </div>
                     <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronRight size={18} /></button>
-                    
-                    <button 
-                        onClick={() => setSelectedDate(today)}
-                        title="Ir a Hoy"
-                        className="ml-4 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"
-                    >
-                        <RotateCcw size={14} />
-                    </button>
+                    <button onClick={() => setSelectedDate(today)} title="Ir a Hoy" className="ml-4 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"><RotateCcw size={14} /></button>
                  </div>
-
                  <div className="flex items-center gap-3">
                     <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                        <button onClick={handleApplyMasterData} className="p-3 text-indigo-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Cargar ADN Maestro">
-                            <Wand2 size={20} />
-                        </button>
-                        <button onClick={handleSaveAsMaster} className="p-3 text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Guardar como ADN Maestro">
-                            <Save size={20} />
-                        </button>
+                        <button onClick={handleApplyMasterData} className="p-3 text-indigo-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Cargar ADN Maestro"><Wand2 size={20} /></button>
+                        <button onClick={handleSaveAsMaster} className="p-3 text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Guardar como ADN Maestro"><Save size={20} /></button>
                     </div>
-
-                    <button 
-                        onClick={() => setSubTab(subTab === 'MAESTRO' ? 'GENERAL' : 'MAESTRO')}
-                        className={`p-4 rounded-2xl shadow-md transition-all ${subTab === 'MAESTRO' ? 'bg-indigo-900 text-white' : 'bg-amber-500 text-white shadow-amber-200'}`}
-                        title="Editar Plantilla ADN Maestro"
-                    >
-                        <Database size={22} />
-                    </button>
-
-                    <button onClick={() => setIsNewRouteModalOpen(true)} className="p-4 bg-[#1e293b] text-white rounded-2xl shadow-md hover:bg-indigo-600 transition-all" title="Añadir Nueva Ruta">
-                        <Plus size={22} />
-                    </button>
-
-                    <button onClick={() => setIsCloseModalOpen(true)} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-md hover:bg-emerald-700 transition-all" title="Ver Zonas Incompletas">
-                        <CheckCircle2 size={22} />
-                    </button>
+                    <button onClick={() => setSubTab(subTab === 'MAESTRO' ? 'GENERAL' : 'MAESTRO')} className={`p-4 rounded-2xl shadow-md transition-all ${subTab === 'MAESTRO' ? 'bg-indigo-900 text-white' : 'bg-amber-500 text-white shadow-amber-200'}`} title="Plantilla ADN"><Database size={22} /></button>
+                    <button onClick={() => setIsNewRouteModalOpen(true)} className="p-4 bg-[#1e293b] text-white rounded-2xl shadow-md hover:bg-indigo-600 transition-all" title="Nueva Ruta"><Plus size={22} /></button>
+                    <button onClick={() => setIsCloseModalOpen(true)} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-md hover:bg-emerald-700 transition-all" title="Zonas Incompletas"><CheckCircle2 size={22} /></button>
                  </div>
                </div>
              )}
@@ -372,54 +340,28 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                       </div>
                       {activeTab === 'parte' && (
                         <div className="flex p-0.5 bg-slate-100 rounded-lg">
-                            {['GENERAL', 'REPASO', 'TRANSFERENCIA'].map(t => (
-                                <button key={t} onClick={() => setSubTab(t as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${subTab === t ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{t}</button>
-                            ))}
+                            {['GENERAL', 'REPASO', 'TRANSFERENCIA'].map(t => (<button key={t} onClick={() => setSubTab(t as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${subTab === t ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{t}</button>))}
                         </div>
                       )}
                       {activeTab === 'parte' && shiftFilter !== 'TODOS' && subTab !== 'MAESTRO' && (
                          <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, cid) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} />
                       )}
                   </div>
-
                   <div className="flex-1 overflow-hidden flex flex-col">
                     {activeTab === 'personal' ? (
                       <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                        <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onBulkAddStaff={onBulkAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
                       </div>
                     ) : (
                       <div className="flex-1 overflow-hidden flex flex-col p-4 relative">
                          <div className={`flex-1 bg-white border rounded-[2rem] shadow-sm overflow-hidden flex flex-col ${subTab === 'MAESTRO' ? 'border-amber-300 ring-4 ring-amber-50' : ''}`}>
-                            {subTab === 'MAESTRO' && (
-                                <div className="bg-amber-500 text-white px-6 py-3 flex items-center justify-between shrink-0">
-                                    <span className="text-[10px] font-black uppercase tracking-widest italic flex items-center gap-2">
-                                        <Database size={14} /> Editando Plantilla ADN Maestro (Los cambios aquí afectan a los días nuevos)
-                                    </span>
-                                    <button onClick={() => setSubTab('GENERAL')} className="text-[9px] font-black bg-white/20 px-3 py-1 rounded-lg uppercase">Salir de edición</button>
-                                </div>
-                            )}
                             <div className="flex-1 overflow-hidden flex flex-col">
                               {(subTab as any) === 'TRANSFERENCIA' ? (
                                 <div className="flex-1 overflow-auto custom-scrollbar">
                                   <TransferTable isMasterMode={subTab === 'MAESTRO'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(p => p.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, cid, uidx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: cid, unitIdx: uidx })} onUpdateStaff={handleUpdateStaff} />
                                 </div>
                               ) : (
-                                <ReportTable 
-                                  isMasterMode={subTab === 'MAESTRO'} 
-                                  data={records.filter(r => 
-                                    (shiftFilter === 'TODOS' || r.shift === shiftFilter) && 
-                                    (subTab === 'MAESTRO' ? true : 
-                                      subTab === 'GENERAL' 
-                                        ? (r.category === 'RECOLECCIÓN' || !r.category) 
-                                        : r.category === 'REPASO_LATERAL')
-                                  )} 
-                                  onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} 
-                                  onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} 
-                                  onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} 
-                                  onUpdateStaff={handleUpdateStaff} 
-                                  selectedDate={selectedDate} 
-                                  activeShiftLabel={shiftFilter} 
-                                />
+                                <ReportTable isMasterMode={subTab === 'MAESTRO'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'MAESTRO' ? true : subTab === 'GENERAL' ? (r.category === 'RECOLECCIÓN' || !r.category) : r.category === 'REPASO_LATERAL'))} onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
                               )}
                             </div>
                          </div>
@@ -438,18 +380,18 @@ const App: React.FC<AppProps> = ({ dataService }) => {
             <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
                 <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
                     <div className="flex items-center gap-3"><Users className="text-indigo-400" size={24} /><h3 className="text-xl font-black uppercase italic tracking-tight">Seleccionar {pickerState.role}</h3></div>
-                    <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl"><RefreshCcw size={24} className="rotate-45" /></button>
+                    <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><RefreshCcw size={24} className="rotate-45" /></button>
                 </div>
                 <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
-                    <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-red-50 text-red-500 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-sm"> Quitar</button>
+                    <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-red-50 text-red-500 rounded-2xl text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all shadow-sm"> Quitar</button>
                     <div className="relative flex-1 group"><input autoFocus type="text" placeholder="LEGAJO O APELLIDO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white focus:border-indigo-100 transition-all uppercase" /></div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
                     {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
-                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-5 rounded-2xl border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-transparent hover:border-indigo-400 hover:bg-indigo-50/20'} ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : (s.id === pickerState.currentValueId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500')}`}>
+                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-5 rounded-2xl border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-transparent hover:border-indigo-400 hover:bg-indigo-50/20'}`}>
                             <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : (s.id === pickerState.currentValueId ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500')}`}>{s.name.charAt(0)}</div>
-                                <div><h4 className="text-[12px] font-black uppercase text-slate-800 tracking-tight leading-none">{s.name}</h4><p className="text-[9px] font-bold text-slate-400 mt-2">LEGAJO: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500 ml-2">[{s.address}]</span>}</p></div>
+                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-900 text-white' : 'bg-slate-100'}`}>{s.name.charAt(0)}</div>
+                                <div><h4 className="text-[12px] font-black uppercase text-slate-800 tracking-tight leading-none">{s.name}</h4><p className="text-[9px] font-bold text-slate-400 mt-2">LEGAJO: {s.id}</p></div>
                             </div>
                         </div>
                     )) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
@@ -470,13 +412,5 @@ const NavButton = ({ active, onClick, icon, label }: any) => (
      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
   </button>
 );
-
-const getAbsenceStyles = (reason: string) => {
-    const r = (reason || '').toUpperCase();
-    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) return 'bg-red-900 text-white border-red-950 font-black shadow-inner';
-    if (r.includes('VACACIONES')) return 'bg-amber-600 text-white border-amber-700 font-black shadow-inner';
-    if (r.includes('MEDICA') || r.includes('ART')) return 'bg-blue-800 text-white border-blue-900 font-black shadow-inner';
-    return 'bg-slate-700 text-white border-slate-800 font-black shadow-inner';
-};
 
 export default App;

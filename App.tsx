@@ -47,7 +47,7 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
 /**
  * Función CRÍTICA: Calcula el estado de un colaborador para una fecha específica.
  * Si tiene una falta cargada pero la fecha de consulta está fuera del rango, 
- * devuelve el estado PRESENTE.
+ * devuelve el estado PRESENTE, pero mantiene el registro en el padrón.
  */
 export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string): StaffStatus => {
     if (staff.status !== StaffStatus.ABSENT) return staff.status;
@@ -55,17 +55,16 @@ export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string):
     const startDate = staff.absenceStartDate;
     const returnDate = staff.absenceReturnDate;
 
-    // Si no hay fechas definidas, asumimos que es una falta puntual "eterna" hasta cambio manual
+    // Si no hay fechas definidas, es una falta puntual "eterna" hasta cambio manual
     if (!startDate) return StaffStatus.ABSENT;
 
-    // Lógica de periodos:
-    // 1. Antes de empezar la falta -> PRESENTE
+    // 1. Antes de empezar la falta -> PRESENTE (Falta futura programada)
     if (targetDate < startDate) return StaffStatus.PRESENT;
 
     // 2. Si es indefinida y ya empezó -> AUSENTE
     if (staff.isIndefiniteAbsence) return StaffStatus.ABSENT;
 
-    // 3. Si hay fecha de regreso y ya se cumplió -> PRESENTE
+    // 3. Si hay fecha de regreso y ya se cumplió -> PRESENTE (Falta finalizada)
     if (returnDate && targetDate >= returnDate) return StaffStatus.PRESENT;
 
     // 4. En cualquier otro caso dentro del rango -> AUSENTE
@@ -101,7 +100,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  // Mapeamos el staff list para que siempre refleje el estado dinámico según la fecha
+  // Mapeamos el staff list para que el Parte Diario refleje el estado dinámico
   const effectiveStaffList = useMemo(() => {
     return staffList.map(s => ({
         ...s,
@@ -258,7 +257,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
 
   const sortedPickerList = useMemo(() => {
       const query = pickerSearch.trim().toLowerCase();
-      // Usamos effectiveStaffList para que el selector sepa quién está realmente de falta hoy
+      // Usamos effectiveStaffList para que el selector sepa quién está realmente de falta HOY
       let filtered = effectiveStaffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
       return filtered.sort((a, b) => { const isASelected = a.id === pickerState?.currentValueId; const isBSelected = b.id === pickerState?.currentValueId; if (isASelected && !isBSelected) return -1; if (!isASelected && isBSelected) return 1; return a.name.localeCompare(b.name); }).slice(0, 40);
   }, [effectiveStaffList, pickerSearch, pickerState?.currentValueId]);
@@ -342,7 +341,19 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                   <div className="flex-1 overflow-hidden flex flex-col">
                     {activeTab === 'personal' ? (
                       <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        <StaffManagement staffList={effectiveStaffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onBulkAddStaff={onBulkAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                        {/* Pasamos staffList original para NO perder datos en el EditModal, pero incluimos selectedDate para lógica visual */}
+                        <StaffManagement 
+                            staffList={staffList} 
+                            onUpdateStaff={handleUpdateStaff} 
+                            onAddStaff={onAddStaff} 
+                            onBulkAddStaff={onBulkAddStaff} 
+                            onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} 
+                            records={records} 
+                            selectedShift={shiftFilter} 
+                            searchTerm={searchTerm} 
+                            onSearchChange={setSearchTerm} 
+                            selectedDate={selectedDate}
+                        />
                       </div>
                     ) : (
                       <div className="flex-1 overflow-hidden flex flex-col p-4 relative">

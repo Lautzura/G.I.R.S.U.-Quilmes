@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import { StaffMember, StaffStatus, RouteRecord, AbsenceReason } from '../types';
-import { Search, UserPlus, Trash, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, FileSpreadsheet, Briefcase, ChevronDown } from 'lucide-react';
+import { Search, UserPlus, Trash, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, FileSpreadsheet, Briefcase, ChevronDown, CalendarClock } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../styles';
+import { getEffectiveStaffStatus } from '../App';
 import * as XLSX from 'xlsx';
 
 interface StaffManagementProps {
@@ -17,6 +18,7 @@ interface StaffManagementProps {
   selectedShift: string;
   searchTerm: string; 
   onSearchChange: (val: string) => void;
+  selectedDate: string; // Recibimos la fecha para el cálculo dinámico
 }
 
 type SortKey = 'name' | 'id' | 'role';
@@ -31,7 +33,7 @@ const uniqueById = (list: StaffMember[]) => {
   });
 };
 
-export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, onBulkAddStaff, selectedShift, records, searchTerm, onSearchChange }) => {
+export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onRemoveStaff, onUpdateStaff, onAddStaff, onBulkAddStaff, selectedShift, records, searchTerm, onSearchChange, selectedDate }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffMember | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
@@ -69,10 +71,8 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         let apellidoCol = -1;
         let nombresCol = -1;
 
-        // Escanear las primeras 50 filas buscando el encabezado
         for (let i = 0; i < Math.min(rows.length, 50); i++) {
             const row = rows[i].map(c => String(c).trim().toUpperCase());
-            // Buscar variantes de "LEGAJO"
             const lIdx = row.findIndex(c => 
                 c === 'LEGAJO' || c === 'LEGA' || c === 'ID' || c.includes('LEGAJO') || c.includes('NRO LEG')
             );
@@ -80,7 +80,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             if (lIdx !== -1) {
                 headerIdx = i;
                 legajoCol = lIdx;
-                // Buscar variantes de apellido y nombre
                 apellidoCol = row.findIndex(c => c.includes('APELLIDO'));
                 nombresCol = row.findIndex(c => c.includes('NOMBRE'));
                 break;
@@ -88,7 +87,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         }
 
         if (headerIdx === -1 || legajoCol === -1) {
-            alert('No se detectó una columna de "LEGAJO" en el archivo. Por favor, asegúrese de que el Excel tenga los encabezados correctos.');
+            alert('No se detectó una columna de "LEGAJO" en el archivo.');
             setIsImporting(false);
             return;
         }
@@ -103,12 +102,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             const apellido = apellidoCol !== -1 ? String(row[apellidoCol] || '').trim() : "";
             const nombres = nombresCol !== -1 ? String(row[nombresCol] || '').trim() : "";
             
-            // Si el nombre viene solo en una columna (nombresCol) o concatenado
             let fullName = "";
             if (apellido && nombres) fullName = `${apellido} ${nombres}`;
             else if (apellido) fullName = apellido;
             else if (nombres) fullName = nombres;
-            else return; // Si no hay nombre, ignorar
+            else return;
 
             newStaff.push({ 
                 id: idRaw, 
@@ -124,7 +122,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         if (newStaff.length > 0 && onBulkAddStaff) {
             onBulkAddStaff(newStaff);
         } else if (newStaff.length === 0) {
-            alert('No se encontraron registros válidos para importar.');
+            alert('No se encontraron registros válidos.');
         }
 
       } catch (err) { 
@@ -142,35 +140,45 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     return uniqueById(staffList.filter(s => selectedShift === 'TODOS' || s.preferredShift === selectedShift));
   }, [staffList, selectedShift]);
 
+  // Lista con estados dinámicos calculados para la visualización
+  const processedStaff = useMemo(() => {
+    return shiftStaff.map(s => ({
+        ...s,
+        effectiveStatus: getEffectiveStaffStatus(s, selectedDate)
+    }));
+  }, [shiftStaff, selectedDate]);
+
   const roleBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
-    shiftStaff.forEach(s => {
+    processedStaff.forEach(s => {
       const role = s.role || 'SIN ROL';
       counts[role] = (counts[role] || 0) + 1;
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [shiftStaff]);
+  }, [processedStaff]);
 
   const absenceBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
-    shiftStaff.forEach(s => {
-      if (s.status === StaffStatus.ABSENT && s.address) counts[s.address] = (counts[s.address] || 0) + 1;
+    processedStaff.forEach(s => {
+      if (s.effectiveStatus === StaffStatus.ABSENT && s.address) {
+          counts[s.address] = (counts[s.address] || 0) + 1;
+      }
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [shiftStaff]);
+  }, [processedStaff]);
 
   const filteredStaff = useMemo(() => {
     const search = searchTerm.toLowerCase().trim();
-    return shiftStaff.filter(s => {
+    return processedStaff.filter(s => {
       const matchesSearch = s.name.toLowerCase().includes(search) || s.id.toLowerCase().includes(search);
       if (!matchesSearch) return false;
-      if (activeReasonFilter && (s.status !== StaffStatus.ABSENT || s.address !== activeReasonFilter)) return false;
+      if (activeReasonFilter && (s.effectiveStatus !== StaffStatus.ABSENT || s.address !== activeReasonFilter)) return false;
       if (activeRoleFilter && s.role !== activeRoleFilter) return false;
       return true;
     });
-  }, [shiftStaff, searchTerm, activeReasonFilter, activeRoleFilter]);
+  }, [processedStaff, searchTerm, activeReasonFilter, activeRoleFilter]);
 
-  const groupedStaff: Record<string, StaffMember[]> = useMemo(() => {
+  const groupedStaff: Record<string, any[]> = useMemo(() => {
     let sorted = [...filteredStaff].sort((a, b) => {
       const valA = (a[sortConfig.key as keyof StaffMember] || '').toString().toUpperCase();
       const valB = (b[sortConfig.key as keyof StaffMember] || '').toString().toUpperCase();
@@ -180,7 +188,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     });
 
     if (selectedShift === 'TODOS') {
-      const groups: Record<string, StaffMember[]> = { 'MAÑANA': [], 'TARDE': [], 'NOCHE': [] };
+      const groups: Record<string, any[]> = { 'MAÑANA': [], 'TARDE': [], 'NOCHE': [] };
       sorted.forEach(s => {
         if (s.preferredShift && groups[s.preferredShift]) groups[s.preferredShift].push(s);
         else groups['MAÑANA'].push(s);
@@ -191,11 +199,11 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
   }, [filteredStaff, selectedShift, sortConfig]);
 
   const stats = useMemo(() => ({ 
-    total: shiftStaff.length, 
-    presente: shiftStaff.filter(s => s.status === StaffStatus.PRESENT).length, 
-    reserva: shiftStaff.filter(s => s.status === StaffStatus.RESERVA).length, 
-    ausentes: shiftStaff.filter(s => s.status === StaffStatus.ABSENT).length
-  }), [shiftStaff]);
+    total: processedStaff.length, 
+    presente: processedStaff.filter(s => s.effectiveStatus === StaffStatus.PRESENT).length, 
+    reserva: processedStaff.filter(s => s.effectiveStatus === StaffStatus.RESERVA).length, 
+    ausentes: processedStaff.filter(s => s.effectiveStatus === StaffStatus.ABSENT).length
+  }), [processedStaff]);
 
   const SortButton = ({ label, sortKey }: { label: string, sortKey: SortKey }) => (
     <button 
@@ -213,9 +221,9 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     <div className="space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto pb-12">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="TOTAL" value={stats.total} icon={<Users size={22} />} color="indigo" />
-        <StatCard label="PRESENTES" value={stats.presente} icon={<CheckCircle size={22} />} color="emerald" />
+        <StatCard label="PRESENTES (Efectivos)" value={stats.presente} icon={<CheckCircle size={22} />} color="emerald" />
         <StatCard label="RESERVA" value={stats.reserva} icon={<Star size={22} />} color="amber" />
-        <StatCard label="FALTAS" value={stats.ausentes} icon={<UserMinus size={22} />} color="red" />
+        <StatCard label="FALTAS (Efectivas)" value={stats.ausentes} icon={<UserMinus size={22} />} color="red" />
       </div>
 
       <div className="bg-white rounded-[2.5rem] p-5 shadow-sm border border-slate-100 flex flex-col xl:flex-row items-center justify-between gap-4">
@@ -277,7 +285,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
       {absenceBreakdown.length > 0 && (
           <div className="flex items-center gap-3 px-6 py-2 bg-red-50/50 border border-red-100 rounded-3xl animate-in slide-in-from-top-2">
               <AlertCircle size={14} className="text-red-500" />
-              <span className="text-[9px] font-black text-red-600 uppercase tracking-widest mr-2">Filtro Rápido de Novedades:</span>
+              <span className="text-[9px] font-black text-red-600 uppercase tracking-widest mr-2">Novedades Activas Hoy:</span>
               <div className="flex flex-wrap gap-2">
                   {absenceBreakdown.map(([reason, count]) => (
                       <button 
@@ -310,46 +318,62 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
             <tbody className="divide-y divide-slate-100">
               {Object.entries(groupedStaff).map(([shift, members]) => (
                 <React.Fragment key={shift}>
-                  {selectedShift === 'TODOS' && (members as StaffMember[]).length > 0 && (
+                  {selectedShift === 'TODOS' && (members as any[]).length > 0 && (
                     <tr className="bg-indigo-50/30">
                       <td colSpan={5} className="px-10 py-3">
                         <div className="flex items-center gap-3">
-                          <span className="text-[10px] font-black text-indigo-600 tracking-[0.2em] uppercase italic">TURNO {shift} — {(members as StaffMember[]).length} INTEGRANTES</span>
+                          <span className="text-[10px] font-black text-indigo-600 tracking-[0.2em] uppercase italic">TURNO {shift} — {(members as any[]).length} INTEGRANTES</span>
                           <div className="h-px bg-indigo-100 flex-1" />
                         </div>
                       </td>
                     </tr>
                   )}
-                  {(members as StaffMember[]).map(s => (
-                    <tr key={s.id} className="h-20 hover:bg-slate-50 transition-colors group">
-                      <td className="pl-10">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || 'FALTA') : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
-                          <div>
-                            <p className="font-black text-slate-800 text-[11px] uppercase leading-none">{s.name}</p>
-                            <p className="text-[8px] text-slate-400 font-bold uppercase mt-1.5 tracking-widest">LEG: {s.id}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="text-center">
-                        <span className="text-[9px] font-black px-3 py-1.5 bg-slate-100 rounded-lg text-slate-500 uppercase">{s.role || '---'}</span>
-                      </td>
-                      <td className="text-center">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase italic opacity-70">{s.preferredShift}</span>
-                      </td>
-                      <td className="text-center">
-                        <div className="flex justify-center">
-                          <span className={`px-4 py-1.5 rounded-xl text-[8px] font-black uppercase border ${s.status === StaffStatus.ABSENT ? getAbsenceStyles(s.address || '') : s.status === StaffStatus.RESERVA ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>{s.status === StaffStatus.ABSENT ? (s.address || 'FALTA') : s.status}</span>
-                        </div>
-                      </td>
-                      <td className="pr-10 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => setEditingStaff(s)} className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={16} /></button>
-                          <button onClick={() => onRemoveStaff(s.id)} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash size={16} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {(members as any[]).map(s => {
+                    const hasAbsenceInDB = s.status === StaffStatus.ABSENT;
+                    const isEffectivelyPresent = s.effectiveStatus === StaffStatus.PRESENT;
+                    const isEffectivelyAbsent = s.effectiveStatus === StaffStatus.ABSENT;
+                    
+                    return (
+                        <tr key={s.id} className="h-20 hover:bg-slate-50 transition-colors group">
+                          <td className="pl-10">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shadow-sm ${isEffectivelyAbsent ? getAbsenceStyles(s.address || 'FALTA') : 'bg-slate-100 text-slate-500'}`}>{s.name.charAt(0)}</div>
+                              <div>
+                                <p className="font-black text-slate-800 text-[11px] uppercase leading-none">{s.name}</p>
+                                <p className="text-[8px] text-slate-400 font-bold uppercase mt-1.5 tracking-widest">LEG: {s.id}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="text-center">
+                            <span className="text-[9px] font-black px-3 py-1.5 bg-slate-100 rounded-lg text-slate-500 uppercase">{s.role || '---'}</span>
+                          </td>
+                          <td className="text-center">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase italic opacity-70">{s.preferredShift}</span>
+                          </td>
+                          <td className="text-center">
+                            <div className="flex flex-col items-center justify-center gap-1">
+                              {/* Estado Efectivo (Hoy) */}
+                              <span className={`px-4 py-1.5 rounded-xl text-[8px] font-black uppercase border ${isEffectivelyAbsent ? getAbsenceStyles(s.address || '') : s.effectiveStatus === StaffStatus.RESERVA ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>
+                                  {isEffectivelyAbsent ? (s.address || 'AUSENTE') : isEffectivelyPresent ? 'PRESENTE' : s.effectiveStatus}
+                              </span>
+                              
+                              {/* Indicador de registro en Padrón si está fuera de rango */}
+                              {hasAbsenceInDB && isEffectivelyPresent && (
+                                  <div className="flex items-center gap-1 text-[7px] font-black text-indigo-400 uppercase italic">
+                                      <CalendarClock size={10} /> Registrada en Padrón
+                                  </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="pr-10 text-right">
+                            <div className="flex justify-end gap-2">
+                              <button onClick={() => setEditingStaff(s)} className="p-2.5 text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><Edit3 size={16} /></button>
+                              <button onClick={() => onRemoveStaff(s.id)} className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-all"><Trash size={16} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                    );
+                  })}
                 </React.Fragment>
               ))}
               {filteredStaff.length === 0 && (

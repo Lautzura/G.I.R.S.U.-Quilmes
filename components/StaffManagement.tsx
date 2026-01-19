@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { StaffMember, StaffStatus, RouteRecord, AbsenceReason, ZoneStatus } from '../types';
-import { Search, UserPlus, Trash, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, Info, User as UserIcon, FileSpreadsheet, Loader2, FilterX, Briefcase, ChevronDown, HardHat } from 'lucide-react';
+import { StaffMember, StaffStatus, RouteRecord, AbsenceReason } from '../types';
+import { Search, UserPlus, Trash, Edit3, AlertCircle, LayoutList, ArrowUp, ArrowDown, ArrowUpDown, Users, CheckCircle, Star, UserMinus, FileSpreadsheet, Briefcase, ChevronDown } from 'lucide-react';
 import { AddStaffModal } from './AddStaffModal';
 import { EditStaffModal } from './EditStaffModal';
 import { getAbsenceStyles } from '../styles';
@@ -58,39 +58,82 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
         const workbook = XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" }) as any[][];
-        if (rows.length === 0) { setIsImporting(false); return; }
+        
+        if (rows.length === 0) {
+            setIsImporting(false);
+            return;
+        }
+
         let headerIdx = -1;
         let legajoCol = -1;
         let apellidoCol = -1;
         let nombresCol = -1;
-        for (let i = 0; i < Math.min(rows.length, 30); i++) {
+
+        // Escanear las primeras 50 filas buscando el encabezado
+        for (let i = 0; i < Math.min(rows.length, 50); i++) {
             const row = rows[i].map(c => String(c).trim().toUpperCase());
-            const lIdx = row.findIndex(c => c === 'LEGAJO' || c === 'LEGA');
+            // Buscar variantes de "LEGAJO"
+            const lIdx = row.findIndex(c => 
+                c === 'LEGAJO' || c === 'LEGA' || c === 'ID' || c.includes('LEGAJO') || c.includes('NRO LEG')
+            );
+            
             if (lIdx !== -1) {
                 headerIdx = i;
                 legajoCol = lIdx;
+                // Buscar variantes de apellido y nombre
                 apellidoCol = row.findIndex(c => c.includes('APELLIDO'));
                 nombresCol = row.findIndex(c => c.includes('NOMBRE'));
                 break;
             }
         }
+
         if (headerIdx === -1 || legajoCol === -1) {
-            alert('No se detectó el encabezado "LEGAJO".');
+            alert('No se detectó una columna de "LEGAJO" en el archivo. Por favor, asegúrese de que el Excel tenga los encabezados correctos.');
             setIsImporting(false);
             return;
         }
+
         const newStaff: StaffMember[] = [];
         const dataRows = rows.slice(headerIdx + 1);
+        
         dataRows.forEach((row) => {
-            const id = String(row[legajoCol] || '').trim();
-            const apellido = String(row[apellidoCol] || '').trim();
-            const nombres = String(row[nombresCol] || '').trim();
-            if (id && (apellido || nombres)) {
-                newStaff.push({ id: id, name: `${apellido} ${nombres}`.trim().toUpperCase(), status: StaffStatus.PRESENT, role: 'AUXILIAR', gender: 'MASCULINO', preferredShift: 'MAÑANA', assignedZone: 'BASE' });
-            }
+            const idRaw = String(row[legajoCol] || '').trim();
+            if (!idRaw) return;
+
+            const apellido = apellidoCol !== -1 ? String(row[apellidoCol] || '').trim() : "";
+            const nombres = nombresCol !== -1 ? String(row[nombresCol] || '').trim() : "";
+            
+            // Si el nombre viene solo en una columna (nombresCol) o concatenado
+            let fullName = "";
+            if (apellido && nombres) fullName = `${apellido} ${nombres}`;
+            else if (apellido) fullName = apellido;
+            else if (nombres) fullName = nombres;
+            else return; // Si no hay nombre, ignorar
+
+            newStaff.push({ 
+                id: idRaw, 
+                name: fullName.toUpperCase(), 
+                status: StaffStatus.PRESENT, 
+                role: 'AUXILIAR', 
+                gender: 'MASCULINO', 
+                preferredShift: 'MAÑANA', 
+                assignedZone: 'BASE' 
+            });
         });
-        if (newStaff.length > 0 && onBulkAddStaff) onBulkAddStaff(newStaff);
-      } catch (err) { alert('Error al procesar el Excel.'); } finally { setIsImporting(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+
+        if (newStaff.length > 0 && onBulkAddStaff) {
+            onBulkAddStaff(newStaff);
+        } else if (newStaff.length === 0) {
+            alert('No se encontraron registros válidos para importar.');
+        }
+
+      } catch (err) { 
+          console.error(err);
+          alert('Error crítico al procesar el archivo Excel.'); 
+      } finally { 
+          setIsImporting(false); 
+          if (fileInputRef.current) fileInputRef.current.value = ''; 
+      }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -127,7 +170,6 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
     });
   }, [shiftStaff, searchTerm, activeReasonFilter, activeRoleFilter]);
 
-  // Fix: Explicitly type groupedStaff to help TypeScript infer 'members' in the JSX map as StaffMember[].
   const groupedStaff: Record<string, StaffMember[]> = useMemo(() => {
     let sorted = [...filteredStaff].sort((a, b) => {
       const valA = (a[sortConfig.key as keyof StaffMember] || '').toString().toUpperCase();
@@ -220,7 +262,14 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
 
         <div className="flex items-center gap-2 w-full xl:w-auto">
             <input type="file" ref={fileInputRef} onChange={handleExcelImport} className="hidden" accept=".xlsx, .xls" />
-            <button onClick={() => fileInputRef.current?.click()} className="flex-1 xl:flex-none flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:brightness-110 transition-all"><FileSpreadsheet size={16} /> IMPORTAR</button>
+            <button 
+                disabled={isImporting}
+                onClick={() => fileInputRef.current?.click()} 
+                className="flex-1 xl:flex-none flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-800 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg hover:brightness-110 transition-all disabled:opacity-50"
+            >
+                <FileSpreadsheet size={16} /> 
+                {isImporting ? 'PROCESANDO...' : 'IMPORTAR EXCEL'}
+            </button>
             <button onClick={() => setIsAddModalOpen(true)} className="flex-1 xl:flex-none flex items-center justify-center gap-2 px-8 py-3.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-xl hover:brightness-110 transition-all"><UserPlus size={16} /> NUEVO</button>
         </div>
       </div>
@@ -307,7 +356,7 @@ export const StaffManagement: React.FC<StaffManagementProps> = ({ staffList, onR
                 <tr>
                   <td colSpan={5} className="py-20 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-300">
-                      <Search size={40} className="mb-4 opacity-10" />
+                      <Users size={40} className="mb-4 opacity-10" />
                       <p className="text-[10px] font-black uppercase tracking-widest">Sin resultados en este turno</p>
                     </div>
                   </td>

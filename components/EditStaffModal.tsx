@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Save, Edit3, MapPin, Briefcase, Calendar, Infinity as InfinityIcon, User, UserRound, ArrowRight } from 'lucide-react';
+import { X, Save, Edit3, MapPin, Briefcase, Calendar, Infinity as InfinityIcon, User, UserRound, ArrowRight, AlertCircle } from 'lucide-react';
 import { StaffMember, StaffStatus, AbsenceReason, RouteRecord } from '../types';
 
 interface EditStaffModalProps {
@@ -34,6 +34,8 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
   }, [formData.preferredShift, allRecords]);
 
   useEffect(() => {
+    // IMPORTANTE: Siempre usamos los datos RAW del staffList, no los efectivos,
+    // para que la edición actúe sobre el "Padrón" original.
     setFormData({
       id: staff.id,
       name: staff.name,
@@ -53,7 +55,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
+    const updatedMember: StaffMember = {
       ...staff,
       id: formData.id,
       name: formData.name.toUpperCase(),
@@ -66,7 +68,9 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
       absenceStartDate: formData.status === StaffStatus.ABSENT ? formData.absenceStartDate : undefined,
       absenceReturnDate: formData.status === StaffStatus.ABSENT && !formData.isIndefiniteAbsence ? formData.absenceReturnDate : undefined,
       isIndefiniteAbsence: formData.status === StaffStatus.ABSENT ? formData.isIndefiniteAbsence : false
-    }, staff.id); // Passing the original ID to handle the case where the legajo (ID) is changed.
+    };
+
+    onSave(updatedMember, staff.id);
     onClose();
   };
 
@@ -79,8 +83,8 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                 <Edit3 size={24} className="text-indigo-400" />
             </div>
             <div>
-                <h3 className="text-xl font-black uppercase tracking-tight leading-none">Editar Colaborador</h3>
-                <p className="text-[10px] text-indigo-300 font-bold uppercase mt-1 tracking-widest opacity-60">Ficha técnica de personal</p>
+                <h3 className="text-xl font-black uppercase tracking-tight leading-none">Ficha del Padrón</h3>
+                <p className="text-[10px] text-indigo-300 font-bold uppercase mt-1 tracking-widest opacity-60">Control Maestro de Personal</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={24} /></button>
@@ -130,26 +134,6 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Género del Colaborador</label>
-            <div className="grid grid-cols-2 gap-4">
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, gender: 'MASCULINO'})}
-                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'MASCULINO' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
-              >
-                <User size={14} /> MASCULINO
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, gender: 'FEMENINO'})}
-                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'FEMENINO' ? 'bg-pink-500 text-white border-pink-500 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
-              >
-                <UserRound size={14} /> FEMENINO
-              </button>
-            </div>
-          </div>
-
           <div className="grid grid-cols-2 gap-6">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Turno Pref.</label>
@@ -181,7 +165,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
              <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    <Briefcase size={12} className="text-slate-400" /> Asistencia
+                    <Briefcase size={12} className="text-slate-400" /> Registro de Falta
                     </label>
                     <select 
                     value={formData.status}
@@ -192,14 +176,14 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
                         'bg-white border-slate-200 text-emerald-600 focus:ring-emerald-500'
                     }`}
                     >
-                    <option value={StaffStatus.PRESENT}>PRESENTE</option>
-                    <option value={StaffStatus.ABSENT}>FALTA</option>
+                    <option value={StaffStatus.PRESENT}>NORMAL (PRESENTE)</option>
+                    <option value={StaffStatus.ABSENT}>FALTA REGISTRADA</option>
                     <option value={StaffStatus.RESERVA}>RESERVA</option>
                     </select>
                 </div>
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                    Motivo de Falta
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                    Motivo
                     </label>
                     <select 
                     disabled={formData.status !== StaffStatus.ABSENT}
@@ -220,46 +204,46 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
 
              {formData.status === StaffStatus.ABSENT && (
                  <div className="pt-4 border-t border-slate-200 space-y-4 animate-in slide-in-from-top duration-300">
-                    <div className="flex flex-col gap-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                    Inicio de Licencia
-                                </label>
+                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex items-center gap-3 mb-2">
+                        <AlertCircle className="text-amber-600 shrink-0" size={16} />
+                        <p className="text-[8px] font-black text-amber-700 uppercase leading-none italic">
+                            Esta falta permanecerá registrada en el padrón. El sistema solo la aplicará en los partes diarios que coincidan con las fechas indicadas abajo.
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Inicio de Licencia</label>
+                            <input 
+                                type="date" 
+                                value={formData.absenceStartDate} 
+                                onChange={e => setFormData({...formData, absenceStartDate: e.target.value})} 
+                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Fin (Retorno)</label>
+                                <button 
+                                    type="button"
+                                    onClick={() => setFormData(p => ({...p, isIndefiniteAbsence: !p.isIndefiniteAbsence}))}
+                                    className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase transition-all ${formData.isIndefiniteAbsence ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-200 text-slate-500'}`}
+                                >
+                                    Indefinido
+                                </button>
+                            </div>
+                            {!formData.isIndefiniteAbsence && (
                                 <input 
                                     type="date" 
-                                    value={formData.absenceStartDate} 
-                                    onChange={e => setFormData({...formData, absenceStartDate: e.target.value})} 
+                                    value={formData.absenceReturnDate} 
+                                    onChange={e => setFormData({...formData, absenceReturnDate: e.target.value})} 
                                     className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 />
-                            </div>
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest">
-                                        Fin de Licencia
-                                    </label>
-                                    <button 
-                                        type="button"
-                                        onClick={() => setFormData(p => ({...p, isIndefiniteAbsence: !p.isIndefiniteAbsence}))}
-                                        className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase transition-all ${formData.isIndefiniteAbsence ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}
-                                    >
-                                        Indefinido
-                                    </button>
+                            )}
+                            {formData.isIndefiniteAbsence && (
+                                <div className="w-full px-4 py-2 bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-black text-slate-400 flex items-center justify-center gap-2 uppercase">
+                                    <InfinityIcon size={14} /> Sin fecha fija
                                 </div>
-                                {!formData.isIndefiniteAbsence && (
-                                    <input 
-                                        type="date" 
-                                        value={formData.absenceReturnDate} 
-                                        onChange={e => setFormData({...formData, absenceReturnDate: e.target.value})} 
-                                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                    />
-                                )}
-                                {formData.isIndefiniteAbsence && (
-                                    <div className="w-full px-4 py-2 bg-slate-100 border border-dashed border-slate-300 rounded-xl text-xs font-black text-slate-400 flex items-center justify-center gap-2 uppercase">
-                                        <InfinityIcon size={14} /> Sin fecha de retorno
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
                     </div>
                  </div>
@@ -269,7 +253,7 @@ export const EditStaffModal: React.FC<EditStaffModalProps> = ({ isOpen, onClose,
           <div className="pt-4 flex gap-4">
             <button type="button" onClick={onClose} className="flex-1 py-4 text-[11px] font-black uppercase text-slate-400 bg-slate-100 rounded-2xl hover:bg-slate-200 transition-colors">Cancelar</button>
             <button type="submit" className="flex-[2] py-4 text-[11px] font-black uppercase text-white bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 active:scale-95">
-              <Save size={18} /> Guardar Cambios
+              <Save size={18} /> Actualizar Padrón
             </button>
           </div>
         </form>

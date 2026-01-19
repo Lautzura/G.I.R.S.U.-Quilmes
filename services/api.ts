@@ -1,4 +1,4 @@
-import { HybridDataService } from './hybriddataservice';
+import { HybridDataService } from './HybridDataService';
 import { PartsDataService } from './PartsDataService';
 import { StaffMember } from '../types';
 import { DayDataDTO } from '../dtos/RouteDTO';
@@ -9,7 +9,7 @@ const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:808
 // 1. Instancia base híbrida (Failover Remoto/Local)
 export const hybridDataService = new HybridDataService(API_URL);
 
-// 2. Instancia específica para Partes (Pegamento solicitado)
+// 2. Instancia específica para Partes
 export const partsService = new PartsDataService(hybridDataService);
 
 // Alias para compatibilidad con index.tsx

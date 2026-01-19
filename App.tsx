@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord } from './types';
 import { ReportTable } from './components/ReportTable';
@@ -11,6 +10,7 @@ import { IDataService } from './services/DataService';
 import { DayDataDTO } from './dtos/RouteDTO';
 import { createEmptyTransfer } from './domain/transferFactory';
 import { createInitialRouteRecords, createRouteRecord } from './domain/routeFactory';
+// Fix: Use camelCase import to match the resolved file name and avoid casing collision errors
 import { dayDataDTOToState, stateToDayDataDTO } from './services/dayMapper';
 import { EXTRA_STAFF } from './constants';
 import { 
@@ -341,7 +341,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                   <div className="flex-1 overflow-hidden flex flex-col">
                     {activeTab === 'personal' ? (
                       <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        {/* Pasamos staffList original para NO perder datos en el EditModal, pero incluimos selectedDate para lógica visual */}
                         <StaffManagement 
                             staffList={staffList} 
                             onUpdateStaff={handleUpdateStaff} 
@@ -391,9 +390,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
                     {sortedPickerList.length > 0 ? sortedPickerList.map(s => {
-                        // Aquí verificamos si está AUSENTE para la fecha seleccionada
                         const isAbsentToday = s.status === StaffStatus.ABSENT;
-                        
                         return (
                             <div 
                                 key={s.id} 

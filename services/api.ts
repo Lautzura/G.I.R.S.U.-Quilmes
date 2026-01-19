@@ -1,5 +1,4 @@
-
-import { HybridDataService } from './HybridDataService';
+import { HybridDataService } from './hybriddataservice';
 import { PartsDataService } from './PartsDataService';
 import { StaffMember } from '../types';
 import { DayDataDTO } from '../dtos/RouteDTO';

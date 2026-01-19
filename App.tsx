@@ -11,10 +11,7 @@ import { IDataService } from './services/DataService';
 import { DayDataDTO } from './dtos/RouteDTO';
 import { createEmptyTransfer } from './domain/transferFactory';
 import { createInitialRouteRecords, createRouteRecord } from './domain/routeFactory';
-import { 
-    toRouteRecordDTO, toTransferRecordDTO, 
-    fromRouteRecordDTO, fromTransferRecordDTO 
-} from './utils/converters';
+import { dayDataDTOToState, stateToDayDataDTO } from './services/dayMapper';
 import { EXTRA_STAFF } from './constants';
 import { 
     ClipboardList,
@@ -33,7 +30,7 @@ import {
     Save
 } from 'lucide-react';
 
-// Canal de sincronización universal para el ecosistema GIRSU
+// Canal de sincronización universal
 const syncChannel = new BroadcastChannel('sync_channel');
 
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
@@ -45,6 +42,34 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
     seen.add(id);
     return true;
   });
+};
+
+/**
+ * Función CRÍTICA: Calcula el estado de un colaborador para una fecha específica.
+ * Si tiene una falta cargada pero la fecha de consulta está fuera del rango, 
+ * devuelve el estado PRESENTE.
+ */
+export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string): StaffStatus => {
+    if (staff.status !== StaffStatus.ABSENT) return staff.status;
+    
+    const startDate = staff.absenceStartDate;
+    const returnDate = staff.absenceReturnDate;
+
+    // Si no hay fechas definidas, asumimos que es una falta puntual "eterna" hasta cambio manual
+    if (!startDate) return StaffStatus.ABSENT;
+
+    // Lógica de periodos:
+    // 1. Antes de empezar la falta -> PRESENTE
+    if (targetDate < startDate) return StaffStatus.PRESENT;
+
+    // 2. Si es indefinida y ya empezó -> AUSENTE
+    if (staff.isIndefiniteAbsence) return StaffStatus.ABSENT;
+
+    // 3. Si hay fecha de regreso y ya se cumplió -> PRESENTE
+    if (returnDate && targetDate >= returnDate) return StaffStatus.PRESENT;
+
+    // 4. En cualquier otro caso dentro del rango -> AUSENTE
+    return StaffStatus.ABSENT;
 };
 
 interface AppProps {
@@ -76,6 +101,14 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
+  // Mapeamos el staff list para que siempre refleje el estado dinámico según la fecha
+  const effectiveStaffList = useMemo(() => {
+    return staffList.map(s => ({
+        ...s,
+        status: getEffectiveStaffStatus(s, selectedDate)
+    }));
+  }, [staffList, selectedDate]);
+
   useEffect(() => {
     const handleSync = (event: MessageEvent) => {
       if (event.data.type === 'STAFF_UPDATE') {
@@ -87,9 +120,10 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   }, []);
 
   const hydrateDayData = useCallback((dto: DayDataDTO, staff: StaffMember[]) => {
-    setRecords(dto.records.map(r => fromRouteRecordDTO(r, staff)));
-    setTransferRecords(dto.transfers.map(tr => fromTransferRecordDTO(tr, staff)));
-    setShiftManagers(dto.managers);
+    const state = dayDataDTOToState(dto, staff);
+    setRecords(state.records);
+    setTransferRecords(state.transfers);
+    setShiftManagers(state.managers);
   }, []);
 
   const initDefaultDay = useCallback((staff: StaffMember[]) => {
@@ -121,16 +155,6 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     initDefaultDay(staff);
   };
 
-  const loadMasterData = async (staff: StaffMember[]) => {
-    const dto = await dataService.loadMaster();
-    setIsOnline(dataService.isOnline);
-    if (!dto) {
-      initDefaultDay(staff);
-      return;
-    }
-    hydrateDayData(dto, staff);
-  };
-
   useEffect(() => {
     const loadData = async () => {
       setIsLoaded(false);
@@ -138,8 +162,11 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       setIsOnline(dataService.isOnline);
       const initialStaff = deduplicateStaff(staffRaw.length ? staffRaw : EXTRA_STAFF);
       setStaffList(initialStaff);
+
       if (subTab === 'MAESTRO') {
-        await loadMasterData(initialStaff);
+        const dto = await dataService.loadMaster();
+        if (dto) hydrateDayData(dto, initialStaff);
+        else initDefaultDay(initialStaff);
       } else {
         await loadDayData(selectedDate, initialStaff);
       }
@@ -148,19 +175,14 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     loadData();
   }, [selectedDate, subTab, dataService]);
 
-  const serializeDayData = useCallback((): DayDataDTO => ({
-    records: records.map(toRouteRecordDTO),
-    transfers: transferRecords.map(toTransferRecordDTO),
-    managers: shiftManagers
-  }), [records, transferRecords, shiftManagers]);
-
+  // Autoguardado
   useEffect(() => {
     if (!isLoaded) return;
     setIsSaving(true);
     const timeout = setTimeout(async () => {
       try {
         await dataService.saveStaff(staffList);
-        const dto = serializeDayData();
+        const dto = stateToDayDataDTO(records, transferRecords, shiftManagers);
         if (subTab === 'MAESTRO') {
           await dataService.saveMaster(dto);
         } else {
@@ -174,7 +196,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       }
     }, 1500); 
     return () => clearTimeout(timeout);
-  }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService, serializeDayData]);
+  }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService]);
 
   const onAddStaff = useCallback(async (newMember: StaffMember) => {
     const updatedList = deduplicateStaff([...staffList, newMember]);
@@ -195,10 +217,9 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       await dataService.saveStaff(updatedList);
       setIsOnline(dataService.isOnline);
       syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
-      alert(`Se han importado ${newStaff.length} registros con éxito.`);
+      alert(`Importación exitosa.`);
     } catch (e) {
       setIsOnline(false);
-      alert('Error al persistir la importación masiva.');
     }
   }, [staffList, dataService]);
 
@@ -206,53 +227,23 @@ const App: React.FC<AppProps> = ({ dataService }) => {
     const idToFind = String(originalId || updatedMember.id).trim();
     const updatedList = deduplicateStaff(staffList.map(s => String(s.id).trim() === idToFind ? updatedMember : s));
     setStaffList(updatedList);
-    setRecords(prev => prev.map(r => {
-      const match = (s: StaffMember | null) => s?.id === idToFind;
-      if (!match(r.driver) && !match(r.aux1) && !match(r.aux2) && !match(r.aux3) && !match(r.aux4) && 
-          !match(r.replacementDriver) && !match(r.replacementAux1) && !match(r.replacementAux2)) return r;
-      return {
-        ...r,
-        driver: match(r.driver) ? updatedMember : r.driver,
-        aux1: match(r.aux1) ? updatedMember : r.aux1,
-        aux2: match(r.aux2) ? updatedMember : r.aux2,
-        aux3: match(r.aux3) ? updatedMember : r.aux3,
-        aux4: match(r.aux4) ? updatedMember : r.aux4,
-        replacementDriver: match(r.replacementDriver) ? updatedMember : r.replacementDriver,
-        replacementAux1: match(r.replacementAux1) ? updatedMember : r.replacementAux1,
-        replacementAux2: match(r.replacementAux2) ? updatedMember : r.replacementAux2,
-      };
-    }));
-    setTransferRecords(prev => prev.map(tr => {
-      const match = (s: StaffMember | null) => s?.id === idToFind;
-      const unitsMatch = tr.units.some(u => match(u.driver));
-      if (!match(tr.maquinista) && !match(tr.encargado) && !match(tr.balancero1) && 
-          !match(tr.auxTolva1) && !match(tr.auxTolva2) && !unitsMatch) return tr;
-      return {
-        ...tr,
-        maquinista: match(tr.maquinista) ? updatedMember : tr.maquinista,
-        encargado: match(tr.encargado) ? updatedMember : tr.encargado,
-        balancero1: match(tr.balancero1) ? updatedMember : tr.balancero1,
-        auxTolva1: match(tr.auxTolva1) ? updatedMember : tr.auxTolva1,
-        auxTolva2: match(tr.auxTolva2) ? updatedMember : tr.auxTolva2,
-        units: tr.units.map(u => match(u.driver) ? { ...u, driver: updatedMember } : u) as any
-      };
-    }));
+    
     syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
   }, [staffList]);
 
   const handleApplyMasterData = async () => {
-    if (window.confirm("¿Cargar ADN Maestro? Sobrescribirá el día actual con la plantilla configurada.")) {
+    if (window.confirm("¿Cargar ADN Maestro?")) {
         const dto = await dataService.loadMaster();
         if (dto) hydrateDayData(dto, staffList);
-        else alert("No hay una plantilla ADN Maestro guardada.");
+        else alert("Sin ADN Maestro.");
     }
   };
 
   const handleSaveAsMaster = async () => {
-    if (window.confirm("¿Establecer este día como el nuevo ADN Maestro?")) {
-      const dto = serializeDayData();
+    if (window.confirm("¿Guardar como ADN Maestro?")) {
+      const dto = stateToDayDataDTO(records, transferRecords, shiftManagers);
       await dataService.saveMaster(dto);
-      alert("ADN Maestro guardado con éxito.");
+      alert("ADN Maestro guardado.");
     }
   };
 
@@ -267,9 +258,10 @@ const App: React.FC<AppProps> = ({ dataService }) => {
 
   const sortedPickerList = useMemo(() => {
       const query = pickerSearch.trim().toLowerCase();
-      let filtered = staffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
+      // Usamos effectiveStaffList para que el selector sepa quién está realmente de falta hoy
+      let filtered = effectiveStaffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
       return filtered.sort((a, b) => { const isASelected = a.id === pickerState?.currentValueId; const isBSelected = b.id === pickerState?.currentValueId; if (isASelected && !isBSelected) return -1; if (!isASelected && isBSelected) return 1; return a.name.localeCompare(b.name); }).slice(0, 40);
-  }, [staffList, pickerSearch, pickerState?.currentValueId]);
+  }, [effectiveStaffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden text-slate-800 font-sans">
@@ -288,12 +280,12 @@ const App: React.FC<AppProps> = ({ dataService }) => {
             {isOnline ? (
                 <div className="px-4 py-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-3">
                     <Globe size={14} className="text-emerald-400" />
-                    <span className="text-[8px] font-black text-emerald-400 uppercase leading-none">Servidor Activo (Red)</span>
+                    <span className="text-[8px] font-black text-emerald-400 uppercase leading-none">Servidor Activo</span>
                 </div>
             ) : (
                 <div className="px-4 py-2 bg-amber-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-3 animate-pulse">
                     <WifiOff size={14} className="text-amber-400" />
-                    <span className="text-[8px] font-black text-amber-400 uppercase leading-none">Modo Local (Sin Red)</span>
+                    <span className="text-[8px] font-black text-amber-400 uppercase leading-none">Modo Local</span>
                 </div>
             )}
         </div>
@@ -315,7 +307,7 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                         <Calendar size={14} className="text-slate-400" />
                     </div>
                     <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronRight size={18} /></button>
-                    <button onClick={() => setSelectedDate(today)} title="Ir a Hoy" className="ml-4 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"><RotateCcw size={14} /></button>
+                    <button onClick={() => setSelectedDate(today)} title="Hoy" className="ml-4 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"><RotateCcw size={14} /></button>
                  </div>
                  <div className="flex items-center gap-3">
                     <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
@@ -344,13 +336,13 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                         </div>
                       )}
                       {activeTab === 'parte' && shiftFilter !== 'TODOS' && subTab !== 'MAESTRO' && (
-                         <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={staffList} onOpenPicker={(f, r, cid) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} />
+                         <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={effectiveStaffList} onOpenPicker={(f, r, cid) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} />
                       )}
                   </div>
                   <div className="flex-1 overflow-hidden flex flex-col">
                     {activeTab === 'personal' ? (
                       <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onBulkAddStaff={onBulkAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                        <StaffManagement staffList={effectiveStaffList} onUpdateStaff={handleUpdateStaff} onAddStaff={onAddStaff} onBulkAddStaff={onBulkAddStaff} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
                       </div>
                     ) : (
                       <div className="flex-1 overflow-hidden flex flex-col p-4 relative">
@@ -387,14 +379,37 @@ const App: React.FC<AppProps> = ({ dataService }) => {
                     <div className="relative flex-1 group"><input autoFocus type="text" placeholder="LEGAJO O APELLIDO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white focus:border-indigo-100 transition-all uppercase" /></div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
-                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
-                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-5 rounded-2xl border-2 bg-white shadow-sm flex items-center justify-between cursor-pointer transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-transparent hover:border-indigo-400 hover:bg-indigo-50/20'}`}>
-                            <div className="flex items-center gap-4">
-                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${s.status === StaffStatus.ABSENT ? 'bg-red-900 text-white' : 'bg-slate-100'}`}>{s.name.charAt(0)}</div>
-                                <div><h4 className="text-[12px] font-black uppercase text-slate-800 tracking-tight leading-none">{s.name}</h4><p className="text-[9px] font-bold text-slate-400 mt-2">LEGAJO: {s.id}</p></div>
+                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => {
+                        // Aquí verificamos si está AUSENTE para la fecha seleccionada
+                        const isAbsentToday = s.status === StaffStatus.ABSENT;
+                        
+                        return (
+                            <div 
+                                key={s.id} 
+                                onClick={() => !isAbsentToday && handlePickerSelection(s)} 
+                                className={`p-5 rounded-2xl border-2 bg-white shadow-sm flex items-center justify-between transition-all ${
+                                    isAbsentToday ? 'opacity-50 grayscale cursor-not-allowed bg-slate-50 border-slate-100' :
+                                    s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md cursor-pointer' : 
+                                    'border-transparent hover:border-indigo-400 hover:bg-indigo-50/20 cursor-pointer'
+                                }`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${isAbsentToday ? 'bg-red-900 text-white' : 'bg-slate-100'}`}>
+                                        {s.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <h4 className="text-[12px] font-black uppercase text-slate-800 tracking-tight leading-none">{s.name}</h4>
+                                        <p className="text-[9px] font-bold text-slate-400 mt-2">LEGAJO: {s.id}</p>
+                                    </div>
+                                </div>
+                                {isAbsentToday && (
+                                    <div className="bg-red-600 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">
+                                        AUSENTE: {s.address}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
+                        );
+                    }) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
                 </div>
             </div>
         </div>

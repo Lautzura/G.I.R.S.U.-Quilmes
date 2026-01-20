@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, UserPlus, ShieldCheck } from 'lucide-react';
+import { X, UserPlus, User, UserRound } from 'lucide-react';
 import { StaffMember, StaffStatus } from '../types';
 
 interface AddStaffModalProps {
@@ -13,8 +13,8 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
   const [formData, setFormData] = useState({
     id: '',
     name: '',
-    role: 'AUXILIAR' as StaffMember['role'],
     gender: 'MASCULINO' as 'MASCULINO' | 'FEMENINO',
+    role: 'AUXILIAR' as StaffMember['role'],
     preferredShift: 'MAÑANA' as 'MAÑANA' | 'TARDE' | 'NOCHE'
   });
 
@@ -93,19 +93,23 @@ export const AddStaffModal: React.FC<AddStaffModalProps> = ({ isOpen, onClose, o
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identidad de Género</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['MASCULINO', 'FEMENINO'] as const).map(g => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setFormData({...formData, gender: g})}
-                  className={`py-2 rounded-xl text-[10px] font-black transition-all border ${formData.gender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
-                >
-                  {g === 'MASCULINO' ? 'HOMBRE' : 'MUJER'}
-                </button>
-              ))}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Género del Colaborador</label>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, gender: 'MASCULINO'})}
+                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'MASCULINO' ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                <User size={14} /> MASCULINO
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, gender: 'FEMENINO'})}
+                className={`flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] font-black uppercase transition-all border ${formData.gender === 'FEMENINO' ? 'bg-pink-500 text-white border-pink-500 shadow-md' : 'bg-white text-slate-400 border-slate-100'}`}
+              >
+                <UserRound size={14} /> FEMENINO
+              </button>
             </div>
           </div>
 

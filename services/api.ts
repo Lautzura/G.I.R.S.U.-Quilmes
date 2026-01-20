@@ -1,4 +1,3 @@
-
 import { RouteRecord, StaffMember } from '../types';
 
 // URL base para el servidor (puedes cambiarla después si tienes un backend real)

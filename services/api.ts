@@ -1,31 +1,52 @@
-import { HybridDataService } from './HybridDataService';
-import { PartsDataService } from './PartsDataService';
-import { StaffMember } from '../types';
-import { DayDataDTO } from '../dtos/RouteDTO';
 
-// URL de la API centralizada
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://10.1.0.250:8080';
+import { RouteRecord, StaffMember } from '../types';
 
-// 1. Instancia base híbrida (Failover Remoto/Local)
-export const hybridDataService = new HybridDataService(API_URL);
+// URL base para el servidor (puedes cambiarla después si tienes un backend real)
+const BASE_URL = 'https://tu-api-ejemplo.com/api'; 
 
-// 2. Instancia específica para Partes
-export const partsService = new PartsDataService(hybridDataService);
-
-// Alias para compatibilidad con index.tsx
-export const dataService = partsService;
-
-/**
- * ApiService: Interfaz simplificada
- */
 export const ApiService = {
-  get isOnline() { return partsService.isOnline; },
-  loadStaff: () => partsService.loadStaff(),
-  saveStaff: (staff: StaffMember[]) => partsService.saveStaff(staff),
-  loadDay: (date: string) => partsService.loadDay(date),
-  saveDay: (date: string, data: DayDataDTO) => partsService.saveDay(date, data),
-  loadMaster: () => partsService.loadMaster(),
-  saveMaster: (data: DayDataDTO) => partsService.saveMaster(data)
-};
+  async fetchRecords(): Promise<RouteRecord[]> {
+    try {
+      const res = await fetch(`${BASE_URL}/records`);
+      if (!res.ok) throw new Error('Error al cargar registros');
+      return await res.json();
+    } catch (e) {
+      console.warn("ApiService: El servidor no está configurado. Se usarán datos locales (localStorage).");
+      return [];
+    }
+  },
 
-export default ApiService;
+  async updateRecord(id: string, data: Partial<RouteRecord>) {
+    try {
+      return await fetch(`${BASE_URL}/records/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+    } catch (e) {
+      return null;
+    }
+  },
+
+  async fetchStaff(): Promise<StaffMember[]> {
+    try {
+      const res = await fetch(`${BASE_URL}/staff`);
+      if (!res.ok) throw new Error('Error al cargar personal');
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  async updateStaffMember(member: StaffMember) {
+    try {
+      return await fetch(`${BASE_URL}/staff/${member.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(member)
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+};

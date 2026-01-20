@@ -65,8 +65,8 @@ const StaffCell: React.FC<StaffCellProps> = ({
                 {staff.id}
               </span>
               {isAbsent && (
-                <span className="text-[7px] font-black uppercase bg-white/30 px-1 rounded truncate max-w-[60px] text-white">
-                  {staff.address || 'FALTA'}
+                <span className="text-[7px] font-black uppercase bg-white/30 px-1 rounded truncate max-w-[80px] text-white animate-pulse">
+                  FALTA [{staff.address || 'FALTA'}]
                 </span>
               )}
             </div>
@@ -90,15 +90,9 @@ const StaffCell: React.FC<StaffCellProps> = ({
 };
 
 export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate }) => {
-  
-  // Mapa de historial para autocompletar dominios
   const domainHistory = useMemo(() => {
     const history: Record<string, string> = {};
-    data.forEach(r => {
-      if (r.internalId && r.domain) {
-        history[r.internalId] = r.domain;
-      }
-    });
+    data.forEach(r => { if (r.internalId && r.domain) history[r.internalId] = r.domain; });
     return history;
   }, [data]);
 
@@ -108,63 +102,24 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
     const el = document.querySelector(`[data-row="${r}"][data-col="${safeC}"]`) as HTMLElement;
     if (el) {
         const input = el.querySelector('input, select') as HTMLInputElement | HTMLSelectElement;
-        if (input) {
-            input.focus();
-            if (input instanceof HTMLInputElement) input.select();
-        } else {
-            el.focus();
-        }
+        if (input) { input.focus(); if (input instanceof HTMLInputElement) input.select(); }
+        else el.focus();
     }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLElement>, rIdx: number, cIdx: number) => {
     const { key } = e;
     const target = e.target as HTMLInputElement;
-
-    if (key === 'Enter') { 
-      e.preventDefault(); 
-      focusCell(rIdx + 1, cIdx); 
-    }
-    else if (key === 'ArrowUp') { 
-      e.preventDefault(); 
-      focusCell(rIdx - 1, cIdx); 
-    }
-    else if (key === 'ArrowDown') { 
-      e.preventDefault(); 
-      focusCell(rIdx + 1, cIdx); 
-    }
-    else if (key === 'ArrowLeft') {
-      if (!(target instanceof HTMLInputElement) || target.selectionStart === 0) {
-        e.preventDefault();
-        focusCell(rIdx, cIdx - 1);
-      }
-    }
-    else if (key === 'ArrowRight') {
-      if (!(target instanceof HTMLInputElement) || target.selectionEnd === target.value.length) {
-        e.preventDefault();
-        focusCell(rIdx, cIdx + 1);
-      }
-    }
+    if (key === 'Enter') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
+    else if (key === 'ArrowUp') { e.preventDefault(); focusCell(rIdx - 1, cIdx); }
+    else if (key === 'ArrowDown') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
+    else if (key === 'ArrowLeft') { if (!(target instanceof HTMLInputElement) || target.selectionStart === 0) { e.preventDefault(); focusCell(rIdx, cIdx - 1); } }
+    else if (key === 'ArrowRight') { if (!(target instanceof HTMLInputElement) || target.selectionEnd === target.value.length) { e.preventDefault(); focusCell(rIdx, cIdx + 1); } }
   };
 
   const handleToggleStatus = (s: StaffMember, newStatus: StaffStatus) => {
-      if (newStatus === StaffStatus.PRESENT) {
-          onUpdateStaff({
-              ...s,
-              status: StaffStatus.PRESENT,
-              address: '',
-              absenceStartDate: undefined,
-              absenceReturnDate: undefined,
-              isIndefiniteAbsence: false
-          });
-      } else {
-          onUpdateStaff({
-              ...s,
-              status: StaffStatus.ABSENT,
-              address: 'FALTA',
-              absenceStartDate: selectedDate
-          });
-      }
+      if (newStatus === StaffStatus.PRESENT) onUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined, absenceReturnDate: undefined, isIndefiniteAbsence: false });
+      else onUpdateStaff({ ...s, status: StaffStatus.ABSENT, address: 'FALTA', absenceStartDate: selectedDate });
   };
 
   return (
@@ -172,7 +127,6 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
       <div className="bg-[#111827] text-white px-6 py-2 flex justify-between items-center shrink-0">
         <span className="text-[9px] font-black uppercase tracking-widest italic">{activeShiftLabel}</span>
       </div>
-
       <div className="flex-1 overflow-auto custom-scrollbar">
         <table className="border-collapse text-[9px] w-full min-w-[2000px] table-fixed">
           <thead className="sticky top-0 z-30 text-black font-black uppercase text-[8px] border-b-2 border-black bg-indigo-50">
@@ -199,25 +153,8 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
             {data.map((r, rowIndex) => (
                 <tr key={r.id} className="h-10 hover:bg-slate-50 transition-colors">
                   <td className="sticky left-0 z-20 font-black border-r border-black text-center bg-slate-100 uppercase text-slate-900 px-2">{r.zone}</td>
-                  <td data-row={rowIndex} data-col={0} className="border-r border-black p-0">
-                    <input 
-                      type="text" 
-                      value={r.internalId || ''} 
-                      onChange={e => {
-                        const val = e.target.value;
-                        onUpdateRecord?.(r.id, 'internalId', val);
-                        // Sugerir dominio si existe en el historial
-                        if (domainHistory[val] && !r.domain) {
-                          onUpdateRecord?.(r.id, 'domain', domainHistory[val]);
-                        }
-                      }} 
-                      onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} 
-                      className="w-full h-full bg-transparent text-center font-black outline-none border-none" 
-                    />
-                  </td>
-                  <td data-row={rowIndex} data-col={1} className="border-r border-black p-0">
-                    <input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none uppercase" />
-                  </td>
+                  <td data-row={rowIndex} data-col={0} className="border-r border-black p-0"><input type="text" value={r.internalId || ''} onChange={e => { onUpdateRecord?.(r.id, 'internalId', e.target.value); if (domainHistory[e.target.value] && !r.domain) onUpdateRecord?.(r.id, 'domain', domainHistory[e.target.value]); }} onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} className="w-full h-full bg-transparent text-center font-black outline-none border-none" /></td>
+                  <td data-row={rowIndex} data-col={1} className="border-r border-black p-0"><input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none uppercase" /></td>
                   <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER', r.driver?.id)} onUpdateStatus={handleToggleStatus} />
                   <StaffCell staff={r.aux1} role="AUX I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR', r.aux1?.id)} onUpdateStatus={handleToggleStatus} />
                   <StaffCell staff={r.aux2} role="AUX II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR', r.aux2?.id)} onUpdateStatus={handleToggleStatus} />
@@ -226,27 +163,11 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <StaffCell staff={r.replacementDriver} role="REP CHO" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER', r.replacementDriver?.id)} onUpdateStatus={handleToggleStatus} />
                   <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR', r.replacementAux1?.id)} onUpdateStatus={handleToggleStatus} />
                   <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR', r.replacementAux2?.id)} onUpdateStatus={handleToggleStatus} />
-                  <td data-row={rowIndex} data-col={10} className="border-r border-black p-0">
-                    <select value={r.zoneStatus} onKeyDown={e => handleInputKeyDown(e, rowIndex, 10)} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}>
-                      <option value={ZoneStatus.PENDING}>PENDIENTE</option>
-                      <option value={ZoneStatus.COMPLETE}>COMPLETA</option>
-                      <option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option>
-                    </select>
-                  </td>
-                  <td data-row={rowIndex} data-col={11} className="border-r border-black p-0">
-                    <input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 11)} className="w-full h-full bg-transparent outline-none px-2 font-bold text-[9px] uppercase" placeholder="..." />
-                  </td>
-                  <td data-row={rowIndex} data-col={12} className="border-r border-black p-0">
-                    <input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 12)} className="w-full h-full bg-transparent text-center outline-none font-black text-indigo-600" placeholder="0.0" />
-                  </td>
-                  <td data-row={rowIndex} data-col={13} className="border-r border-black p-0">
-                    <input type="text" value={r.departureTime || ''} onChange={e => onUpdateRecord?.(r.id, 'departureTime', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 13)} className="w-full h-full bg-transparent text-center outline-none font-bold" placeholder="--:--" />
-                  </td>
-                  <td className="text-center bg-white">
-                    <button onClick={() => onDeleteRecord(r.id)} className="p-1.5 text-red-300 hover:text-red-600 transition-all">
-                      <Trash size={14} />
-                    </button>
-                  </td>
+                  <td data-row={rowIndex} data-col={10} className="border-r border-black p-0"><select value={r.zoneStatus} onKeyDown={e => handleInputKeyDown(e, rowIndex, 10)} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}><option value={ZoneStatus.PENDING}>PENDIENTE</option><option value={ZoneStatus.COMPLETE}>COMPLETA</option><option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option></select></td>
+                  <td data-row={rowIndex} data-col={11} className="border-r border-black p-0"><input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 11)} className="w-full h-full bg-transparent outline-none px-2 font-bold text-[9px] uppercase" placeholder="..." /></td>
+                  <td data-row={rowIndex} data-col={12} className="border-r border-black p-0"><input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 12)} className="w-full h-full bg-transparent text-center outline-none font-black text-indigo-600" placeholder="0.0" /></td>
+                  <td data-row={rowIndex} data-col={13} className="border-r border-black p-0"><input type="text" value={r.departureTime || ''} onChange={e => onUpdateRecord?.(r.id, 'departureTime', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 13)} className="w-full h-full bg-transparent text-center outline-none font-bold" placeholder="--:--" /></td>
+                  <td className="text-center bg-white"><button onClick={() => onDeleteRecord(r.id)} className="p-1.5 text-red-300 hover:text-red-600 transition-all"><Trash size={14} /></button></td>
                 </tr>
             ))}
           </tbody>

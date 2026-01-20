@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
@@ -6,13 +7,11 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
-import { IDataService } from './services/DataService';
-import { DayDataDTO } from './dtos/RouteDTO';
-import { createEmptyTransfer } from './domain/transferFactory';
-import { createInitialRouteRecords, createRouteRecord } from './domain/routeFactory';
-// Fix: Importación corregida a PascalCase
-import { dayDataDTOToState, stateToDayDataDTO } from './services/DayMapper';
-import { EXTRA_STAFF } from './constants';
+import { 
+    MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
+    MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
+    EXTRA_STAFF
+} from './constants';
 import { 
     ClipboardList,
     Users,
@@ -21,17 +20,19 @@ import {
     ChevronRight,
     RefreshCcw,
     CheckCircle2,
-    Database,
-    Wand2,
-    Calendar,
-    RotateCcw,
-    Globe,
-    WifiOff,
-    Save
+    Check,
+    X,
+    LogOut,
+    CassetteTape
 } from 'lucide-react';
 
-// Canal de sincronización universal
-const syncChannel = new BroadcastChannel('sync_channel');
+const syncChannel = new BroadcastChannel('girsu_sync_v27');
+const DB_PREFIX = 'girsu_v27_'; 
+const STAFF_KEY = `${DB_PREFIX}staff`;
+const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
+const DAILY_DATA_KEY = `${DB_PREFIX}day_`;
+const DAILY_TRANS_KEY = `${DB_PREFIX}trans_`;
+const DAILY_MGRS_KEY = `${DB_PREFIX}mgrs_`;
 
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   const seen = new Set();
@@ -44,36 +45,15 @@ const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   });
 };
 
-/**
- * Función CRÍTICA: Calcula el estado de un colaborador para una fecha específica.
- */
-export const getEffectiveStaffStatus = (staff: StaffMember, targetDate: string): StaffStatus => {
-    if (staff.status !== StaffStatus.ABSENT) return staff.status;
-    
-    const startDate = staff.absenceStartDate;
-    const returnDate = staff.absenceReturnDate;
-
-    if (!startDate) return StaffStatus.ABSENT;
-    if (targetDate < startDate) return StaffStatus.PRESENT;
-    if (staff.isIndefiniteAbsence) return StaffStatus.ABSENT;
-    if (returnDate && targetDate >= returnDate) return StaffStatus.PRESENT;
-
-    return StaffStatus.ABSENT;
-};
-
-interface AppProps {
-  dataService: IDataService;
-}
-
-const App: React.FC<AppProps> = ({ dataService }) => {
+const App: React.FC = () => {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const [activeTab, setActiveTab] = useState<'parte' | 'personal'>('parte');
-  const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA' | 'MAESTRO'>('GENERAL');
+  const [subTab, setSubTab] = useState<'GENERAL' | 'REPASO' | 'TRANSFERENCIA'>('GENERAL');
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isOnline, setIsOnline] = useState(dataService.isOnline);
-  
+  const lastLoadedKey = useRef<string | null>(null);
+
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [records, setRecords] = useState<RouteRecord[]>([]);
   const [transferRecords, setTransferRecords] = useState<TransferRecord[]>([]);
@@ -90,149 +70,152 @@ const App: React.FC<AppProps> = ({ dataService }) => {
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
 
-  const effectiveStaffList = useMemo(() => {
-    return staffList.map(s => ({
-        ...s,
-        status: getEffectiveStaffStatus(s, selectedDate)
-    }));
-  }, [staffList, selectedDate]);
-
-  useEffect(() => {
-    const handleSync = (event: MessageEvent) => {
-      if (event.data.type === 'STAFF_UPDATE') {
-        setStaffList(deduplicateStaff(event.data.payload));
-      }
-    };
-    syncChannel.addEventListener('message', handleSync);
-    return () => syncChannel.removeEventListener('message', handleSync);
+  const findStaffSecure = useCallback((searchId: any, currentStaff: StaffMember[]) => {
+    if (!searchId) return null;
+    const query = String(searchId).trim().toUpperCase();
+    return currentStaff.find(s => String(s.id).trim().toUpperCase() === query) || null;
   }, []);
 
-  const hydrateDayData = useCallback((dto: DayDataDTO, staff: StaffMember[]) => {
-    const state = dayDataDTOToState(dto, staff);
-    setRecords(state.records);
-    setTransferRecords(state.transfers);
-    setShiftManagers(state.managers);
-  }, []);
+  const mapStaffToIds = useCallback((data: any[], currentStaff: StaffMember[]) => data.map((r: any) => ({
+    ...r,
+    driver: findStaffSecure(r.driver, currentStaff),
+    aux1: findStaffSecure(r.aux1, currentStaff),
+    aux2: findStaffSecure(r.aux2, currentStaff),
+    aux3: findStaffSecure(r.aux3, currentStaff),
+    aux4: findStaffSecure(r.aux4, currentStaff),
+    replacementDriver: findStaffSecure(r.replacementDriver, currentStaff),
+    replacementAux1: findStaffSecure(r.replacementAux1, currentStaff),
+    replacementAux2: findStaffSecure(r.replacementAux2, currentStaff)
+  })), [findStaffSecure]);
 
-  const initDefaultDay = useCallback((staff: StaffMember[]) => {
-    setRecords(createInitialRouteRecords(staff));
-    setTransferRecords([
-      createEmptyTransfer('MAÑANA'), 
-      createEmptyTransfer('TARDE'), 
-      createEmptyTransfer('NOCHE')
-    ]);
-    setShiftManagers({
-      MAÑANA: { supervisor: '', subSupervisor: '', absences: [] },
-      TARDE: { supervisor: '', subSupervisor: '', absences: [] },
-      NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
+  // Sincronización automática de records cuando cambia el staffList
+  const refreshRecordsWithNewStaff = useCallback((currentStaff: StaffMember[]) => {
+    setRecords(prev => mapStaffToIds(prev.map(r => ({
+        ...r,
+        driver: r.driver?.id || null,
+        aux1: r.aux1?.id || null,
+        aux2: r.aux2?.id || null,
+        aux3: r.aux3?.id || null,
+        aux4: r.aux4?.id || null,
+        replacementDriver: r.replacementDriver?.id || null,
+        replacementAux1: r.replacementAux1?.id || null,
+        replacementAux2: r.replacementAux2?.id || null
+    })), currentStaff));
+
+    setTransferRecords(prev => prev.map(tr => ({
+        ...tr,
+        maquinista: findStaffSecure(tr.maquinista?.id || tr.maquinista, currentStaff),
+        encargado: findStaffSecure(tr.encargado?.id || tr.encargado, currentStaff),
+        balancero1: findStaffSecure(tr.balancero1?.id || tr.balancero1, currentStaff),
+        auxTolva1: findStaffSecure(tr.auxTolva1?.id || tr.auxTolva1, currentStaff),
+        auxTolva2: findStaffSecure(tr.auxTolva2?.id || tr.auxTolva2, currentStaff),
+        units: tr.units.map(u => ({ ...u, driver: findStaffSecure(u.driver?.id || u.driver, currentStaff) }))
+    })));
+  }, [findStaffSecure, mapStaffToIds]);
+
+  const handleUpdateStaff = useCallback((updated: StaffMember, originalId?: string) => {
+    setStaffList(prev => {
+      const idToFind = originalId || updated.id;
+      const newList = prev.map(s => s.id === idToFind ? updated : s);
+      // Forzar refresco de las tablas para que el estado de "Falta" se vea al instante
+      setTimeout(() => refreshRecordsWithNewStaff(newList), 0);
+      return newList;
     });
-  }, []);
-
-  const loadDayData = async (date: string, staff: StaffMember[]) => {
-    const dto = await dataService.loadDay(date);
-    setIsOnline(dataService.isOnline);
-    if (dto) {
-      hydrateDayData(dto, staff);
-      return;
-    }
-    const masterDto = await dataService.loadMaster();
-    if (masterDto) {
-      hydrateDayData(masterDto, staff);
-      return;
-    }
-    initDefaultDay(staff);
-  };
+  }, [refreshRecordsWithNewStaff]);
 
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoaded(false);
-      const staffRaw = await dataService.loadStaff();
-      setIsOnline(dataService.isOnline);
-      const initialStaff = deduplicateStaff(staffRaw.length ? staffRaw : EXTRA_STAFF);
-      setStaffList(initialStaff);
-
-      if (subTab === 'MAESTRO') {
-        const dto = await dataService.loadMaster();
-        if (dto) hydrateDayData(dto, initialStaff);
-        else initDefaultDay(initialStaff);
-      } else {
-        await loadDayData(selectedDate, initialStaff);
+    const handleSyncMessage = (event: MessageEvent) => {
+      const { type, payload, date } = event.data;
+      if (date === selectedDate || type === 'STAFF_UPDATE') {
+          switch(type) {
+            case 'RECORDS_UPDATE': setRecords(mapStaffToIds(payload, staffList)); break;
+            case 'TRANS_UPDATE': setTransferRecords(payload); break;
+            case 'MGRS_UPDATE': setShiftManagers(payload); break;
+            case 'STAFF_UPDATE': 
+                setStaffList(payload);
+                refreshRecordsWithNewStaff(payload);
+                break;
+          }
       }
-      setIsLoaded(true);
     };
-    loadData();
-  }, [selectedDate, subTab, dataService]);
+    syncChannel.addEventListener('message', handleSyncMessage);
+    return () => syncChannel.removeEventListener('message', handleSyncMessage);
+  }, [selectedDate, staffList, mapStaffToIds, refreshRecordsWithNewStaff]);
+
+  const createEmptyTrans = useCallback((s: string): TransferRecord => ({ 
+    id: `TR-${s}`, shift: s as any, 
+    units: [{ id: 'U1', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U2', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }, { id: 'U3', driver: null, domain1: '', domain2: '', trips: [{ hora: '', ton: '' }, { hora: '', ton: '' }, { hora: '', ton: '' }] }] as any, 
+    maquinista: null, maquinistaDomain: '', auxTolva1: null, auxTolva2: null, auxTolva3: null, auxTransferencia1: null, auxTransferencia2: null, encargado: null, balancero1: null, balancero2: null, lonero: null, suplenciaLona: null, observaciones: '' 
+  }), []);
+
+  const getInitialRecordsFromConstants = useCallback((list: StaffMember[]) => {
+    const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ 
+        id: `${m.zone}-${shift}-${idx}-${Date.now()}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findStaffSecure(m.driver, list), aux1: findStaffSecure(m.aux1, list), aux2: findStaffSecure(m.aux2, list), aux3: findStaffSecure(m.aux3, list), aux4: findStaffSecure(m.aux4, list), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' 
+    }));
+    return [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
+  }, [findStaffSecure]);
+
+  useEffect(() => {
+    if (isLoaded && lastLoadedKey.current === selectedDate) return;
+    setIsLoaded(false);
+    const savedStaff = localStorage.getItem(STAFF_KEY);
+    const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
+    setStaffList(initialStaff);
+    
+    const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
+    const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
+
+    if (dayRoutes) {
+        setRecords(mapStaffToIds(JSON.parse(dayRoutes), initialStaff));
+    } else if (adnRoutes) {
+        setRecords(mapStaffToIds(JSON.parse(adnRoutes), initialStaff));
+    } else {
+        setRecords(getInitialRecordsFromConstants(initialStaff));
+    }
+
+    const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
+    if (dayTrans) {
+        setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })));
+    } else {
+        setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
+    }
+
+    const dayMgrs = localStorage.getItem(`${DAILY_MGRS_KEY}${selectedDate}`);
+    if (dayMgrs) setShiftManagers(JSON.parse(dayMgrs));
+    
+    lastLoadedKey.current = selectedDate;
+    setIsLoaded(true);
+  }, [selectedDate, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans, mapStaffToIds]);
+
+  const handleSaveAsADN = () => {
+    if (!confirm("¿Deseas guardar el parte actual como 'ADN Maestro'? Los días nuevos cargarán automáticamente esta configuración.")) return;
+    const pRecs = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null, tonnage: '', departureTime: '', supervisionReport: '', zoneStatus: ZoneStatus.PENDING }));
+    localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(pRecs));
+    alert("ADN Maestro guardado en el cassette exitosamente.");
+  };
 
   useEffect(() => {
     if (!isLoaded) return;
     setIsSaving(true);
-    const timeout = setTimeout(async () => {
-      try {
-        await dataService.saveStaff(staffList);
-        const dto = stateToDayDataDTO(records, transferRecords, shiftManagers);
-        if (subTab === 'MAESTRO') {
-          await dataService.saveMaster(dto);
-        } else {
-          await dataService.saveDay(selectedDate, dto);
-        }
-        setIsOnline(dataService.isOnline);
-      } catch (e) {
-        setIsOnline(false);
-      } finally {
-        setIsSaving(false);
-      }
-    }, 1500); 
+    const timeout = setTimeout(() => {
+        try {
+            localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
+            const pRecs = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
+            const pTrans = transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }));
+            
+            localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(pRecs)); 
+            localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(pTrans)); 
+            localStorage.setItem(`${DAILY_MGRS_KEY}${selectedDate}`, JSON.stringify(shiftManagers));
+            
+            syncChannel.postMessage({ type: 'RECORDS_UPDATE', payload: pRecs, date: selectedDate });
+            syncChannel.postMessage({ type: 'TRANS_UPDATE', payload: pTrans, date: selectedDate });
+            syncChannel.postMessage({ type: 'MGRS_UPDATE', payload: shiftManagers, date: selectedDate });
+            syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: staffList });
+            setIsSaving(false);
+        } catch (e) {}
+    }, 500);
     return () => clearTimeout(timeout);
-  }, [records, transferRecords, shiftManagers, staffList, selectedDate, subTab, isLoaded, dataService]);
-
-  const onAddStaff = useCallback(async (newMember: StaffMember) => {
-    const updatedList = deduplicateStaff([...staffList, newMember]);
-    setStaffList(updatedList);
-    try {
-      await dataService.saveStaff(updatedList);
-      setIsOnline(dataService.isOnline);
-      syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
-    } catch (e) {
-      setIsOnline(false);
-    }
-  }, [staffList, dataService]);
-
-  const onBulkAddStaff = useCallback(async (newStaff: StaffMember[]) => {
-    const updatedList = deduplicateStaff([...staffList, ...newStaff]);
-    setStaffList(updatedList);
-    try {
-      await dataService.saveStaff(updatedList);
-      setIsOnline(dataService.isOnline);
-      syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
-      alert(`Importación exitosa.`);
-    } catch (e) {
-      setIsOnline(false);
-    }
-  }, [staffList, dataService]);
-
-  const handleUpdateStaff = useCallback((updatedMember: StaffMember, originalId?: string) => {
-    const idToFind = String(originalId || updatedMember.id).trim();
-    const updatedList = deduplicateStaff(staffList.map(s => String(s.id).trim() === idToFind ? updatedMember : s));
-    setStaffList(updatedList);
-    
-    syncChannel.postMessage({ type: 'STAFF_UPDATE', payload: updatedList });
-  }, [staffList]);
-
-  const handleApplyMasterData = async () => {
-    if (window.confirm("¿Cargar ADN Maestro?")) {
-        const dto = await dataService.loadMaster();
-        if (dto) hydrateDayData(dto, staffList);
-        else alert("Sin ADN Maestro.");
-    }
-  };
-
-  const handleSaveAsMaster = async () => {
-    if (window.confirm("¿Guardar como ADN Maestro?")) {
-      const dto = stateToDayDataDTO(records, transferRecords, shiftManagers);
-      await dataService.saveMaster(dto);
-      alert("ADN Maestro guardado.");
-    }
-  };
+  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded]);
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
     if (!pickerState) return;
@@ -245,119 +228,83 @@ const App: React.FC<AppProps> = ({ dataService }) => {
 
   const sortedPickerList = useMemo(() => {
       const query = pickerSearch.trim().toLowerCase();
-      let filtered = effectiveStaffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
+      let filtered = staffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
       return filtered.sort((a, b) => { const isASelected = a.id === pickerState?.currentValueId; const isBSelected = b.id === pickerState?.currentValueId; if (isASelected && !isBSelected) return -1; if (!isASelected && isBSelected) return 1; return a.name.localeCompare(b.name); }).slice(0, 40);
-  }, [effectiveStaffList, pickerSearch, pickerState?.currentValueId]);
+  }, [staffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
     <div className="flex h-screen w-screen bg-[#f1f5f9] overflow-hidden text-slate-800 font-sans">
-      <aside className={`w-64 bg-[#0f172a] text-white flex flex-col shrink-0 z-[100] shadow-2xl`}>
-        <div className="p-8 text-center border-b border-white/5">
-            <div className="bg-white p-2 rounded-2xl shadow-xl inline-block mb-3"><img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Quilmes" /></div>
-            <h2 className="text-xl font-black italic text-white uppercase leading-none tracking-tight">QUILMES</h2>
-            <p className="text-[8px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2">G.I.R.S.U.</p>
+      <aside className="w-64 bg-slate-900 text-white flex flex-col shrink-0 z-[100] shadow-xl">
+        <div className="p-6 border-b border-white/10 flex flex-col items-center">
+            <div className="bg-white p-2 rounded-xl mb-3">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/e/e0/Logo_de_Quilmes.png" className="w-10 grayscale brightness-0" alt="Logo" />
+            </div>
+            <h2 className="text-sm font-black italic tracking-tighter uppercase text-center">G.I.R.S.U. QUILMES</h2>
         </div>
-        <nav className="flex-1 px-4 space-y-2 mt-8">
+        <nav className="flex-1 px-4 py-6 space-y-1">
             <NavButton active={activeTab === 'parte'} onClick={() => setActiveTab('parte')} icon={<ClipboardList size={18}/>} label="Parte Diario" />
             <NavButton active={activeTab === 'personal'} onClick={() => setActiveTab('personal')} icon={<Users size={18}/>} label="Personal" />
         </nav>
-        <div className="p-4 border-t border-white/5 space-y-2">
-            <p className="text-[7px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2">Conectividad</p>
-            {isOnline ? (
-                <div className="px-4 py-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-3">
-                    <Globe size={14} className="text-emerald-400" />
-                    <span className="text-[8px] font-black text-emerald-400 uppercase leading-none">Servidor Activo</span>
-                </div>
-            ) : (
-                <div className="px-4 py-2 bg-amber-500/10 rounded-lg border border-emerald-500/20 flex items-center gap-3 animate-pulse">
-                    <WifiOff size={14} className="text-amber-400" />
-                    <span className="text-[8px] font-black text-amber-400 uppercase leading-none">Modo Local</span>
-                </div>
-            )}
+        <div className="p-4 border-t border-white/10 bg-black/20">
+            <button className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500 hover:text-white rounded-xl transition-all text-[10px] font-black uppercase">
+                <LogOut size={16} /> Salir
+            </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-20 bg-white border-b px-8 flex items-center justify-between shrink-0 shadow-sm z-[90]">
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="h-16 bg-white border-b px-6 flex items-center justify-between shrink-0 shadow-sm z-[90]">
           <div className="flex items-center gap-4">
-              <h1 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">{activeTab === 'parte' ? 'Parte Diario' : 'Personal'}</h1>
+              <h1 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em]">Operativa</h1>
               {isSaving && <div className="text-indigo-600 animate-pulse text-[8px] font-black uppercase tracking-widest">Sincronizando...</div>}
           </div>
-          <div className="flex items-center gap-4 relative z-[100]">
+          <div className="flex items-center gap-3">
+             <div className="flex items-center border rounded-full px-3 py-1.5 bg-slate-50 border-slate-200">
+                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronLeft size={16} /></button>
+                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent text-[10px] font-black text-slate-700 outline-none uppercase px-1 w-28 text-center" />
+                <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronRight size={16} /></button>
+             </div>
              {activeTab === 'parte' && (
-               <div className="flex items-center gap-4">
-                 <div className="flex items-center border rounded-full px-5 py-2.5 bg-white border-slate-200 shadow-sm transition-all hover:border-slate-300">
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronLeft size={18} /></button>
-                    <div className="flex items-center gap-2 px-4 border-x mx-2">
-                        <span className="text-[12px] font-black text-slate-700 uppercase tracking-tight w-24 text-center">{selectedDate.split('-').reverse().join('/')}</span>
-                        <Calendar size={14} className="text-slate-400" />
-                    </div>
-                    <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); setSelectedDate(d.toISOString().split('T')[0]); }} className="p-1 text-slate-400 hover:text-indigo-600"><ChevronRight size={18} /></button>
-                    <button onClick={() => setSelectedDate(today)} title="Hoy" className="ml-4 p-2 bg-slate-50 text-slate-400 rounded-full hover:bg-indigo-50 hover:text-indigo-600 transition-all border border-transparent hover:border-indigo-100"><RotateCcw size={14} /></button>
-                 </div>
-                 <div className="flex items-center gap-3">
-                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
-                        <button onClick={handleApplyMasterData} className="p-3 text-indigo-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Cargar ADN Maestro"><Wand2 size={20} /></button>
-                        <button onClick={handleSaveAsMaster} className="p-3 text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl transition-all" title="Guardar como ADN Maestro"><Save size={20} /></button>
-                    </div>
-                    <button onClick={() => setSubTab(subTab === 'MAESTRO' ? 'GENERAL' : 'MAESTRO')} className={`p-4 rounded-2xl shadow-md transition-all ${subTab === 'MAESTRO' ? 'bg-indigo-900 text-white' : 'bg-amber-500 text-white shadow-amber-200'}`} title="Plantilla ADN"><Database size={22} /></button>
-                    <button onClick={() => setIsNewRouteModalOpen(true)} className="p-4 bg-[#1e293b] text-white rounded-2xl shadow-md hover:bg-indigo-600 transition-all" title="Nueva Ruta"><Plus size={22} /></button>
-                    <button onClick={() => setIsCloseModalOpen(true)} className="p-4 bg-emerald-600 text-white rounded-2xl shadow-md hover:bg-emerald-700 transition-all" title="Zonas Incompletas"><CheckCircle2 size={22} /></button>
-                 </div>
-               </div>
+                <div className="flex items-center gap-2 border-l pl-3 ml-1">
+                  <button onClick={handleSaveAsADN} title="Grabar como ADN Maestro" className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200">
+                    <CassetteTape size={18} />
+                    <span className="text-[9px] font-black uppercase">Grabar ADN</span>
+                  </button>
+                  <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-indigo-600 transition-all"><Plus size={18} /></button>
+                  <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-2 rounded-xl hover:bg-emerald-700 transition-all"><CheckCircle2 size={18} /></button>
+                </div>
              )}
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden">
             {isLoaded ? (
-              <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
-                  <div className="px-6 py-2 bg-white border-b flex items-center gap-4 shrink-0">
-                      <div className="flex p-0.5 bg-slate-100 rounded-lg">
-                          {['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'].map(f => <button key={f} onClick={() => setShiftFilter(f as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${shiftFilter === f ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{f}</button>)}
-                      </div>
-                      {activeTab === 'parte' && (
+                activeTab === 'personal' ? (
+                  <div className="h-full p-6 overflow-y-auto bg-slate-50">
+                    <StaffManagement staffList={staffList} onUpdateStaff={handleUpdateStaff} onAddStaff={(s) => setStaffList(prev => deduplicateStaff([...prev, s]))} onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} records={records} selectedShift={shiftFilter} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col overflow-hidden bg-slate-50">
+                    <div className="px-6 py-2 bg-white border-b flex items-center gap-4">
                         <div className="flex p-0.5 bg-slate-100 rounded-lg">
-                            {['GENERAL', 'REPASO', 'TRANSFERENCIA'].map(t => (<button key={t} onClick={() => setSubTab(t as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${subTab === t ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{t}</button>))}
+                            {['MAÑANA', 'TARDE', 'NOCHE', 'TODOS'].map(f => <button key={f} onClick={() => setShiftFilter(f as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${shiftFilter === f ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{f}</button>)}
                         </div>
-                      )}
-                      {activeTab === 'parte' && shiftFilter !== 'TODOS' && subTab !== 'MAESTRO' && (
-                         <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter]} staffList={effectiveStaffList} onOpenPicker={(f, r, cid) => setPickerState({ type: 'managers', targetId: shiftFilter, field: f, role: r, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} />
-                      )}
+                        <div className="flex p-0.5 bg-slate-100 rounded-lg">
+                            {['GENERAL', 'REPASO', 'TRANSFERENCIA'].map(t => <button key={t} onClick={() => setSubTab(t as any)} className={`px-4 py-1.5 text-[9px] font-black rounded-md transition-all ${subTab === t ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400'}`}>{t}</button>)}
+                        </div>
+                        <ShiftManagersTop shift={shiftFilter} data={shiftManagers[shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter]} staffList={staffList} onOpenPicker={(f, r, cid) => setPickerState({ type: 'managers', targetId: shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter, field: f, role: r, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} />
+                    </div>
+                    <div className="flex-1 p-4 overflow-hidden">
+                       <div className="bg-white h-full border rounded-xl shadow-sm overflow-hidden flex flex-col">
+                          {subTab === 'TRANSFERENCIA' ? (
+                            <TransferTable data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(p => p.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, cid, uidx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: cid, unitIdx: uidx })} onUpdateStaff={handleUpdateStaff} />
+                          ) : (
+                            <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
+                          )}
+                       </div>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-hidden flex flex-col">
-                    {activeTab === 'personal' ? (
-                      <div className="flex-1 overflow-y-auto p-6 bg-slate-50 custom-scrollbar">
-                        <StaffManagement 
-                            staffList={staffList} 
-                            onUpdateStaff={handleUpdateStaff} 
-                            onAddStaff={onAddStaff} 
-                            onBulkAddStaff={onBulkAddStaff} 
-                            onRemoveStaff={id => setStaffList(prev => prev.filter(s => s.id !== id))} 
-                            records={records} 
-                            selectedShift={shiftFilter} 
-                            searchTerm={searchTerm} 
-                            onSearchChange={setSearchTerm} 
-                            selectedDate={selectedDate}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex-1 overflow-hidden flex flex-col p-4 relative">
-                         <div className={`flex-1 bg-white border rounded-[2rem] shadow-sm overflow-hidden flex flex-col ${subTab === 'MAESTRO' ? 'border-amber-300 ring-4 ring-amber-50' : ''}`}>
-                            <div className="flex-1 overflow-hidden flex flex-col">
-                              {(subTab as any) === 'TRANSFERENCIA' ? (
-                                <div className="flex-1 overflow-auto custom-scrollbar">
-                                  <TransferTable isMasterMode={subTab === 'MAESTRO'} data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(p => p.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, cid, uidx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: cid, unitIdx: uidx })} onUpdateStaff={handleUpdateStaff} />
-                                </div>
-                              ) : (
-                                <ReportTable isMasterMode={subTab === 'MAESTRO'} data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'MAESTRO' ? true : subTab === 'GENERAL' ? (r.category === 'RECOLECCIÓN' || !r.category) : r.category === 'REPASO_LATERAL'))} onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
-                              )}
-                            </div>
-                         </div>
-                      </div>
-                    )}
-                  </div>
-              </div>
+                )
             ) : (
               <div className="flex h-full items-center justify-center"><RefreshCcw className="animate-spin text-indigo-600" /></div>
             )}
@@ -365,53 +312,29 @@ const App: React.FC<AppProps> = ({ dataService }) => {
       </main>
 
       {pickerState && (
-        <div className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
-                <div className="bg-[#1e1b2e] p-6 text-white flex justify-between items-center">
-                    <div className="flex items-center gap-3"><Users className="text-indigo-400" size={24} /><h3 className="text-xl font-black uppercase italic tracking-tight">Seleccionar {pickerState.role}</h3></div>
-                    <button onClick={() => setPickerState(null)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><RefreshCcw size={24} className="rotate-45" /></button>
+        <div className="fixed inset-0 z-[500] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[80vh]">
+                <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                    <h3 className="text-xs font-black uppercase">Asignar {pickerState.role}</h3>
+                    <button onClick={() => setPickerState(null)} className="p-1 hover:bg-slate-200 rounded-full"><X size={18} /></button>
                 </div>
-                <div className="px-8 py-6 border-b flex gap-6 bg-white items-center">
-                    <button onClick={() => handlePickerSelection(null)} className="px-8 py-4 border-2 border-red-100 bg-red-50 text-red-500 rounded-2xl text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all shadow-sm"> Quitar</button>
-                    <div className="relative flex-1 group"><input autoFocus type="text" placeholder="LEGAJO O APELLIDO..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full pl-6 pr-6 py-4 bg-slate-50 border-2 border-slate-50 rounded-2xl text-[11px] font-bold outline-none focus:ring-4 focus:ring-indigo-100 focus:bg-white focus:border-indigo-100 transition-all uppercase" /></div>
+                <div className="p-4 border-b">
+                    <input autoFocus type="text" placeholder="BUSCAR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-indigo-100" />
                 </div>
-                <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-[#f8fafc]">
-                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => {
-                        const isAbsentToday = s.status === StaffStatus.ABSENT;
-                        return (
-                            <div 
-                                key={s.id} 
-                                onClick={() => !isAbsentToday && handlePickerSelection(s)} 
-                                className={`p-5 rounded-2xl border-2 bg-white shadow-sm flex items-center justify-between transition-all ${
-                                    isAbsentToday ? 'opacity-50 grayscale cursor-not-allowed bg-slate-50 border-slate-100' :
-                                    s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50 shadow-md cursor-pointer' : 
-                                    'border-transparent hover:border-indigo-400 hover:bg-indigo-50/20 cursor-pointer'
-                                }`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-sm shadow-sm ${isAbsentToday ? 'bg-red-900 text-white' : 'bg-slate-100'}`}>
-                                        {s.name.charAt(0)}
-                                    </div>
-                                    <div>
-                                        <h4 className="text-[12px] font-black uppercase text-slate-800 tracking-tight leading-none">{s.name}</h4>
-                                        <p className="text-[9px] font-bold text-slate-400 mt-2">LEGAJO: {s.id}</p>
-                                    </div>
-                                </div>
-                                {isAbsentToday && (
-                                    <div className="bg-red-600 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">
-                                        AUSENTE: {s.address}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    }) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
+                <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
+                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer hover:bg-indigo-50 transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100'} ${s.status === StaffStatus.ABSENT ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
+                            <div><p className="text-[10px] font-black uppercase">{s.name}</p><p className="text-[8px] text-slate-400 font-bold uppercase">LEG: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500 ml-2">[{s.address}]</span>}</p></div>
+                            <Check className={s.id === pickerState.currentValueId ? 'text-indigo-600' : 'text-slate-200'} size={16} />
+                        </div>
+                    )) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
+                    <button onClick={() => handlePickerSelection(null)} className="w-full p-3 border-2 border-dashed border-slate-200 rounded-xl text-[9px] font-black text-red-500 uppercase hover:bg-red-50">Quitar Asignación</button>
                 </div>
             </div>
         </div>
       )}
-
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
-      <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { setRecords(prev => [...prev, createRouteRecord({ zone: z, shift: s as any, order: records.length, category: 'RECOLECCIÓN' })]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
+      <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { const newRec: RouteRecord = { id: `NEW-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'EXTRA', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: subTab === 'REPASO' ? 'REPASO_LATERAL' : 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }; setRecords(prev => [...prev, newRec]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
     </div>
   );
 };

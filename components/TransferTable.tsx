@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { TransferRecord, StaffMember, TransferUnit, StaffStatus } from '../types';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Zap } from 'lucide-react';
 import { getAbsenceStyles } from '../styles';
 
 interface TransferTableProps {
@@ -9,11 +9,11 @@ interface TransferTableProps {
   onUpdateRow: (id: string, field: keyof TransferRecord, value: any) => void;
   onOpenPicker: (id: string, field: string, role: string, currentValueId?: string, unitIdx?: number) => void;
   onUpdateStaff: (staff: StaffMember) => void;
-  staffList?: StaffMember[];
+  presenceOverrides?: string[];
   isMasterMode?: boolean;
 }
 
-export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow, onOpenPicker, onUpdateStaff, isMasterMode = false }) => {
+export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow, onOpenPicker, onUpdateStaff, presenceOverrides = [], isMasterMode = false }) => {
   
   const updateUnitField = (rowId: string, unitIdx: number, field: keyof TransferUnit, val: any) => {
     const row = data.find(r => r.id === rowId);
@@ -39,64 +39,53 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
     const fields = ['dom1', 'dom2', 't0h', 't0n', 't1h', 't1n', 't2h', 't2n'];
     const currentFieldIdx = fields.indexOf(field);
 
-    const isEnter = key === 'Enter';
-    const isUp = key === 'ArrowUp';
-    const isDown = key === 'ArrowDown';
-    const isLeft = key === 'ArrowLeft';
-    const isRight = key === 'ArrowRight';
-
-    if (isEnter || isDown || isUp) {
+    if (key === 'Enter' || key === 'ArrowDown' || key === 'ArrowUp') {
         e.preventDefault();
-        const nextIdx = isUp ? uIdx - 1 : uIdx + 1;
+        const nextIdx = key === 'ArrowUp' ? uIdx - 1 : uIdx + 1;
         if (nextIdx >= 0 && nextIdx < 3) {
             const container = document.querySelector(`[data-row-id="${rowId}"]`);
             const targetEl = container?.querySelector(`[data-unit="${nextIdx}"][data-field="${field}"]`) as HTMLInputElement;
-            if (targetEl) {
-                targetEl.focus();
-                targetEl.select();
-            }
+            if (targetEl) { targetEl.focus(); targetEl.select(); }
         }
-    } else if (isLeft && (target.selectionStart === 0)) {
+    } else if (key === 'ArrowLeft' && target.selectionStart === 0) {
         if (currentFieldIdx > 0) {
             e.preventDefault();
             const container = document.querySelector(`[data-row-id="${rowId}"]`);
             const targetEl = container?.querySelector(`[data-unit="${uIdx}"][data-field="${fields[currentFieldIdx - 1]}"]`) as HTMLInputElement;
-            if (targetEl) {
-                targetEl.focus();
-                targetEl.select();
-            }
+            if (targetEl) { targetEl.focus(); targetEl.select(); }
         }
-    } else if (isRight && (target.selectionEnd === target.value.length)) {
+    } else if (key === 'ArrowRight' && target.selectionEnd === target.value.length) {
         if (currentFieldIdx < fields.length - 1) {
             e.preventDefault();
             const container = document.querySelector(`[data-row-id="${rowId}"]`);
             const targetEl = container?.querySelector(`[data-unit="${uIdx}"][data-field="${fields[currentFieldIdx + 1]}"]`) as HTMLInputElement;
-            if (targetEl) {
-                targetEl.focus();
-                targetEl.select();
-            }
+            if (targetEl) { targetEl.focus(); targetEl.select(); }
         }
     }
   };
 
   const StaffSlot = ({ label, value, onClick, className = "", small = false }: any) => {
-    const isAbsent = value?.status === StaffStatus.ABSENT;
+    const isOverridden = value ? presenceOverrides.includes(value.id) : false;
+    const isAbsent = value?.status === StaffStatus.ABSENT && !isOverridden;
     const absenceStyle = isAbsent ? getAbsenceStyles(value.address || 'FALTA') : '';
 
     return (
       <div 
         onClick={onClick} 
-        className={`flex flex-col border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all relative group/slot ${className} ${isAbsent ? absenceStyle : ''}`}
+        className={`flex flex-col border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all relative group/slot ${className} ${isAbsent ? absenceStyle : isOverridden ? 'bg-indigo-50' : ''}`}
       >
         {label && <div className={`px-2 py-0.5 border-b border-slate-200 text-[7px] font-black uppercase ${isAbsent ? 'bg-white/20 text-current' : 'bg-slate-100 text-slate-500'}`}>{label}</div>}
         <div className={`${small ? 'p-1' : 'p-2'} min-h-[30px] flex flex-col justify-center`}>
-          <span className={`${small ? 'text-[8px]' : 'text-[10px]'} font-black uppercase truncate ${isAbsent ? 'text-current' : 'text-slate-800'}`}>
-            {value?.name || '---'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`${small ? 'text-[8px]' : 'text-[10px]'} font-black uppercase truncate ${isAbsent ? 'text-white' : 'text-slate-800'}`}>
+                {value?.name || '---'}
+            </span>
+            {isOverridden && <Zap size={10} className="text-indigo-600 fill-current" />}
+          </div>
           {value && (
             <div className="flex items-center gap-1 mt-0.5">
-              <span className={`text-[7px] font-bold px-1 rounded ${isAbsent ? 'bg-white/40 text-current' : 'bg-slate-100 text-slate-500'}`}>LEG: {value.id}</span>
-              {isAbsent && <span className="text-[7px] font-black uppercase bg-white/60 px-1 rounded">{value.address || 'FALTA'}</span>}
+              <span className={`text-[7px] font-bold px-1 rounded ${isAbsent ? 'bg-white/40 text-white' : 'bg-slate-100 text-slate-500'}`}>LEG: {value.id}</span>
+              {isAbsent && <span className="text-[7px] font-black uppercase bg-white/60 px-1 rounded text-red-600">FALTA</span>}
             </div>
           )}
         </div>
@@ -104,14 +93,7 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
           <button 
             onClick={(e) => { 
                 e.stopPropagation(); 
-                onUpdateStaff({ 
-                    ...value, 
-                    status: StaffStatus.PRESENT, 
-                    address: '',
-                    absenceStartDate: undefined,
-                    absenceReturnDate: undefined,
-                    isIndefiniteAbsence: false
-                }); 
+                onUpdateStaff(value); 
             }} 
             className="absolute right-1 top-1/2 -translate-y-1/2 bg-emerald-500 text-white p-1 rounded-md opacity-0 group-hover/slot:opacity-100 transition-opacity shadow-lg z-10 hover:bg-emerald-600"
           >
@@ -124,13 +106,8 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
 
   return (
     <div className={`flex flex-col h-full p-4 gap-6 w-full min-w-[1200px] overflow-auto custom-scrollbar ${isMasterMode ? 'bg-orange-50/20' : 'bg-white'}`}>
-      {data.length === 0 && (
-        <div className="flex flex-col items-center justify-center p-20 border-4 border-dashed rounded-[3rem] text-slate-300">
-            <h3 className="text-xl font-black uppercase italic">Sin registros de transferencia</h3>
-        </div>
-      )}
       {data.map((row) => (
-        <div key={row.id} data-row-id={row.id} className={`rounded-[1.5rem] border-2 overflow-hidden shadow-sm flex flex-col shrink-0 mb-4 ${isMasterMode ? 'bg-white border-orange-200' : 'bg-white border-slate-200'}`}>
+        <div key={row.id} data-row-id={row.id} className={`rounded-[1.5rem] border-2 overflow-hidden shadow-sm flex flex-col shrink-0 mb-4 bg-white ${isMasterMode ? 'border-orange-200' : 'border-slate-200'}`}>
             <div className="flex">
                 <div className="flex-1 flex flex-col border-r border-slate-100">
                     <div className={`flex text-white text-[8px] font-black uppercase tracking-widest text-center py-2 ${isMasterMode ? 'bg-orange-600' : 'bg-slate-900'}`}>
@@ -143,7 +120,7 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                                 <div className="flex-1 border-l border-white/20">Viaje 3 (H/TN)</div>
                             </>
                         )}
-                        {isMasterMode && <div className="flex-1 border-l border-white/20">Configuración Estructural</div>}
+                        {isMasterMode && <div className="flex-1 border-l border-white/20">Modo Plantilla</div>}
                     </div>
                     {row.units.map((unit, uIdx) => (
                         <div key={unit.id} className="flex border-b border-slate-100">
@@ -163,12 +140,12 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                                 ))
                             ) : (
                                 <div className="flex-1 bg-orange-50/10 flex items-center justify-center">
-                                    <span className="text-[7px] font-black text-orange-300 uppercase tracking-widest italic">Modo Plantilla</span>
+                                    <span className="text-[7px] font-black text-orange-300 uppercase tracking-widest italic">Plantilla Activa</span>
                                 </div>
                             )}
                         </div>
                     ))}
-                    <div className={`flex ${isMasterMode ? 'bg-orange-50/30' : 'bg-slate-50'}`}>
+                    <div className="flex bg-slate-50">
                         <div className="w-44">
                             <StaffSlot label="MAQUINISTA" value={row.maquinista} onClick={() => onOpenPicker(row.id, 'maquinista', 'MAQUINISTA', row.maquinista?.id)} />
                         </div>
@@ -176,8 +153,8 @@ export const TransferTable: React.FC<TransferTableProps> = ({ data, onUpdateRow,
                             <input type="text" value={row.maquinistaDomain} onChange={e => onUpdateRow(row.id, 'maquinistaDomain', e.target.value.toUpperCase())} className="w-full text-center font-mono font-black text-[9px] uppercase border rounded outline-none focus:bg-white" placeholder="DOMINIO MAQ." />
                         </div>
                         <div className="flex-1 text-center flex items-center justify-center">
-                             <span className={`text-[8px] font-black uppercase tracking-widest italic ${isMasterMode ? 'text-orange-400' : 'text-slate-400'}`}>
-                                {isMasterMode ? 'Definiendo Personal Fijo de Tolva' : 'Carga de Viajes Planta Transferencia'}
+                             <span className="text-[8px] font-black uppercase tracking-widest italic text-slate-400">
+                                Movimientos Planta Transferencia
                              </span>
                         </div>
                     </div>

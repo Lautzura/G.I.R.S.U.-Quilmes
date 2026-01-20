@@ -7,6 +7,7 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
+import { AbsenceChoiceModal } from './components/AbsenceChoiceModal';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
     MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
@@ -20,19 +21,19 @@ import {
     ChevronRight,
     RefreshCcw,
     CheckCircle2,
-    Check,
     X,
     LogOut,
     CassetteTape
 } from 'lucide-react';
 
-const syncChannel = new BroadcastChannel('girsu_sync_v27');
-const DB_PREFIX = 'girsu_v27_'; 
+const syncChannel = new BroadcastChannel('girsu_sync_v28');
+const DB_PREFIX = 'girsu_v28_'; 
 const STAFF_KEY = `${DB_PREFIX}staff`;
 const ADN_ROUTES_KEY = `${DB_PREFIX}adn_routes`;
 const DAILY_DATA_KEY = `${DB_PREFIX}day_`;
 const DAILY_TRANS_KEY = `${DB_PREFIX}trans_`;
 const DAILY_MGRS_KEY = `${DB_PREFIX}mgrs_`;
+const OVERRIDES_KEY = `${DB_PREFIX}overrides_`;
 
 const deduplicateStaff = (list: StaffMember[]): StaffMember[] => {
   const seen = new Set();
@@ -63,9 +64,13 @@ const App: React.FC = () => {
     NOCHE: { supervisor: '', subSupervisor: '', absences: [] }
   });
 
+  // Excepciones: Personas que faltan en el padrón pero vinieron HOY
+  const [dailyOverrides, setDailyOverrides] = useState<string[]>([]);
+
   const [shiftFilter, setShiftFilter] = useState<'MAÑANA' | 'TARDE' | 'NOCHE' | 'TODOS'>('MAÑANA');
   const [searchTerm, setSearchTerm] = useState('');
   const [pickerState, setPickerState] = useState<{ type: string, targetId: string, field: string, role: string, currentValueId?: string, unitIdx?: number } | null>(null);
+  const [absenceChoice, setAbsenceChoice] = useState<StaffMember | null>(null);
   const [pickerSearch, setPickerSearch] = useState('');
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
@@ -88,23 +93,19 @@ const App: React.FC = () => {
     replacementAux2: findStaffSecure(r.replacementAux2, currentStaff)
   })), [findStaffSecure]);
 
-  // Sincronización automática de records cuando cambia el staffList
   const refreshRecordsWithNewStaff = useCallback((currentStaff: StaffMember[]) => {
     setRecords(prev => mapStaffToIds(prev.map(r => ({
         ...r,
-        driver: r.driver?.id || null,
-        aux1: r.aux1?.id || null,
-        aux2: r.aux2?.id || null,
-        aux3: r.aux3?.id || null,
-        aux4: r.aux4?.id || null,
-        replacementDriver: r.replacementDriver?.id || null,
-        replacementAux1: r.replacementAux1?.id || null,
-        replacementAux2: r.replacementAux2?.id || null
+        driver: r.driver?.id || r.driver || null,
+        aux1: r.aux1?.id || r.aux1 || null,
+        aux2: r.aux2?.id || r.aux2 || null,
+        aux3: r.aux3?.id || r.aux3 || null,
+        aux4: r.aux4?.id || r.aux4 || null,
+        replacementDriver: r.replacementDriver?.id || r.replacementDriver || null,
+        replacementAux1: r.replacementAux1?.id || r.replacementAux1 || null,
+        replacementAux2: r.replacementAux2?.id || r.replacementAux2 || null
     })), currentStaff));
 
-    /**
-     * Fix: Added 'as unknown' cast before the tuple cast to satisfy TypeScript when mapping.
-     */
     setTransferRecords(prev => prev.map(tr => ({
         ...tr,
         maquinista: findStaffSecure(tr.maquinista?.id || tr.maquinista, currentStaff),
@@ -120,11 +121,28 @@ const App: React.FC = () => {
     setStaffList(prev => {
       const idToFind = originalId || updated.id;
       const newList = prev.map(s => s.id === idToFind ? updated : s);
-      // Forzar refresco de las tablas para que el estado de "Falta" se vea al instante
       setTimeout(() => refreshRecordsWithNewStaff(newList), 0);
       return newList;
     });
   }, [refreshRecordsWithNewStaff]);
+
+  const handleAbsenceDecision = (decision: 'ONLY_TODAY' | 'DEFINITIVE') => {
+    if (!absenceChoice) return;
+    
+    if (decision === 'DEFINITIVE') {
+        handleUpdateStaff({ 
+            ...absenceChoice, 
+            status: StaffStatus.PRESENT, 
+            address: '', 
+            absenceStartDate: undefined, 
+            absenceReturnDate: undefined, 
+            isIndefiniteAbsence: false 
+        });
+    } else {
+        setDailyOverrides(prev => [...new Set([...prev, absenceChoice.id])]);
+    }
+    setAbsenceChoice(null);
+  };
 
   useEffect(() => {
     const handleSyncMessage = (event: MessageEvent) => {
@@ -153,7 +171,7 @@ const App: React.FC = () => {
 
   const getInitialRecordsFromConstants = useCallback((list: StaffMember[]) => {
     const createInitial = (master: any[], shift: string, cat: string): RouteRecord[] => master.map((m, idx) => ({ 
-        id: `${m.zone}-${shift}-${idx}-${Date.now()}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findStaffSecure(m.driver, list), aux1: findStaffSecure(m.aux1, list), aux2: findStaffSecure(m.aux2, list), aux3: findStaffSecure(m.aux3, list), aux4: findStaffSecure(m.aux4, list), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' 
+        id: `${m.zone}-${shift}-${idx}`, zone: m.zone, internalId: m.interno || '', domain: m.domain || '', reinforcement: 'MASTER', shift: shift as any, departureTime: '', dumpTime: '', tonnage: '', category: cat as any, zoneStatus: ZoneStatus.PENDING, order: idx, driver: findStaffSecure(m.driver, list), aux1: findStaffSecure(m.aux1, list), aux2: findStaffSecure(m.aux2, list), aux3: findStaffSecure(m.aux3, list), aux4: findStaffSecure(m.aux4, list), replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' 
     }));
     return [...createInitial(MANANA_MASTER_DATA, 'MAÑANA', 'RECOLECCIÓN'), ...createInitial(TARDE_MASTER_DATA, 'TARDE', 'RECOLECCIÓN'), ...createInitial(NOCHE_MASTER_DATA, 'NOCHE', 'RECOLECCIÓN'), ...createInitial(MANANA_REPASO_DATA, 'MAÑANA', 'REPASO_LATERAL'), ...createInitial(TARDE_REPASO_DATA, 'TARDE', 'REPASO_LATERAL'), ...createInitial(NOCHE_REPASO_DATA, 'NOCHE', 'REPASO_LATERAL')];
   }, [findStaffSecure]);
@@ -161,10 +179,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isLoaded && lastLoadedKey.current === selectedDate) return;
     setIsLoaded(false);
+    
     const savedStaff = localStorage.getItem(STAFF_KEY);
     const initialStaff = deduplicateStaff(savedStaff ? JSON.parse(savedStaff) : EXTRA_STAFF);
     setStaffList(initialStaff);
     
+    const savedOverrides = localStorage.getItem(`${OVERRIDES_KEY}${selectedDate}`);
+    setDailyOverrides(savedOverrides ? JSON.parse(savedOverrides) : []);
+
     const dayRoutes = localStorage.getItem(`${DAILY_DATA_KEY}${selectedDate}`);
     const adnRoutes = localStorage.getItem(ADN_ROUTES_KEY);
 
@@ -178,10 +200,6 @@ const App: React.FC = () => {
 
     const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
     if (dayTrans) {
-        /**
-         * Fix: Cast mapped units array to [TransferUnit, TransferUnit, TransferUnit] using 'as unknown as'
-         * to satisfy the fixed-size tuple type requirement defined in TransferRecord.
-         */
         setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ 
             ...tr, 
             maquinista: findStaffSecure(tr.maquinista, initialStaff), 
@@ -203,10 +221,31 @@ const App: React.FC = () => {
   }, [selectedDate, findStaffSecure, getInitialRecordsFromConstants, createEmptyTrans, mapStaffToIds]);
 
   const handleSaveAsADN = () => {
-    if (!confirm("¿Deseas guardar el parte actual como 'ADN Maestro'? Los días nuevos cargarán automáticamente esta configuración.")) return;
-    const pRecs = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null, tonnage: '', departureTime: '', supervisionReport: '', zoneStatus: ZoneStatus.PENDING }));
+    if (!confirm("¿Deseas guardar el personal actual como 'ADN Maestro'? Esto limpiará tonelajes y horarios para futuros días.")) return;
+    const pRecs = records.map(r => ({ 
+        id: r.id, 
+        zone: r.zone, 
+        internalId: r.internalId, 
+        domain: r.domain, 
+        reinforcement: r.reinforcement, 
+        shift: r.shift, 
+        category: r.category,
+        order: r.order,
+        driver: r.driver?.id || null, 
+        aux1: r.aux1?.id || null, 
+        aux2: r.aux2?.id || null, 
+        aux3: r.aux3?.id || null, 
+        aux4: r.aux4?.id || null, 
+        replacementDriver: r.replacementDriver?.id || null, 
+        replacementAux1: r.replacementAux1?.id || null, 
+        replacementAux2: r.replacementAux2?.id || null, 
+        tonnage: '', 
+        departureTime: '', 
+        supervisionReport: '', 
+        zoneStatus: ZoneStatus.PENDING 
+    }));
     localStorage.setItem(ADN_ROUTES_KEY, JSON.stringify(pRecs));
-    alert("ADN Maestro guardado en el cassette exitosamente.");
+    alert("ADN Maestro guardado correctamente.");
   };
 
   useEffect(() => {
@@ -215,11 +254,9 @@ const App: React.FC = () => {
     const timeout = setTimeout(() => {
         try {
             localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
+            localStorage.setItem(`${OVERRIDES_KEY}${selectedDate}`, JSON.stringify(dailyOverrides));
+
             const pRecs = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
-            
-            /**
-             * Fix: Cast units array to tuple using 'as unknown as' before persisting.
-             */
             const pTrans = transferRecords.map(tr => ({ 
                 ...tr, 
                 maquinista: tr.maquinista?.id || null, 
@@ -242,7 +279,7 @@ const App: React.FC = () => {
         } catch (e) {}
     }, 500);
     return () => clearTimeout(timeout);
-  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded]);
+  }, [records, transferRecords, shiftManagers, staffList, selectedDate, isLoaded, dailyOverrides]);
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
     if (!pickerState) return;
@@ -251,9 +288,6 @@ const App: React.FC = () => {
     else if (type.includes('transfer')) setTransferRecords(prev => prev.map(tr => { 
         if (tr.id !== targetId) return tr; 
         if (field === 'units' && unitIdx !== undefined) { 
-            /**
-             * Fix: Use unknown cast to convert the spread array back to a tuple.
-             */
             const u = [...tr.units] as unknown as [TransferUnit, TransferUnit, TransferUnit]; 
             u[unitIdx] = { ...u[unitIdx], driver: selectedStaff }; 
             return { ...tr, units: u }; 
@@ -267,7 +301,13 @@ const App: React.FC = () => {
   const sortedPickerList = useMemo(() => {
       const query = pickerSearch.trim().toLowerCase();
       let filtered = staffList.filter(s => s.name.toLowerCase().includes(query) || s.id.toLowerCase().includes(query));
-      return filtered.sort((a, b) => { const isASelected = a.id === pickerState?.currentValueId; const isBSelected = b.id === pickerState?.currentValueId; if (isASelected && !isBSelected) return -1; if (!isASelected && isBSelected) return 1; return a.name.localeCompare(b.name); }).slice(0, 40);
+      return filtered.sort((a, b) => { 
+          const isASelected = a.id === pickerState?.currentValueId; 
+          const isBSelected = b.id === pickerState?.currentValueId; 
+          if (isASelected && !isBSelected) return -1; 
+          if (!isASelected && isBSelected) return 1; 
+          return a.name.localeCompare(b.name); 
+      }).slice(0, 40);
   }, [staffList, pickerSearch, pickerState?.currentValueId]);
 
   return (
@@ -335,9 +375,9 @@ const App: React.FC = () => {
                     <div className="flex-1 p-4 overflow-hidden">
                        <div className="bg-white h-full border rounded-xl shadow-sm overflow-hidden flex flex-col">
                           {subTab === 'TRANSFERENCIA' ? (
-                            <TransferTable data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(p => p.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, cid, uidx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: cid, unitIdx: uidx })} onUpdateStaff={handleUpdateStaff} />
+                            <TransferTable data={transferRecords.filter(tr => shiftFilter === 'TODOS' || tr.shift === shiftFilter)} onUpdateRow={(id, f, v) => setTransferRecords(p => p.map(tr => tr.id === id ? {...tr, [f]: v} : tr))} onOpenPicker={(id, field, role, cid, uidx) => setPickerState({ type: 'transfer', targetId: id, field, role, currentValueId: cid, unitIdx: uidx })} onUpdateStaff={handleUpdateStaff} presenceOverrides={dailyOverrides} />
                           ) : (
-                            <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} onUpdateStaff={handleUpdateStaff} selectedDate={selectedDate} activeShiftLabel={shiftFilter} />
+                            <ReportTable data={records.filter(r => (shiftFilter === 'TODOS' || r.shift === shiftFilter) && (subTab === 'GENERAL' ? (r.category !== 'REPASO_LATERAL') : (r.category === 'REPASO_LATERAL')))} onUpdateRecord={(id, f, v) => setRecords(p => p.map(r => r.id === id ? {...r, [f]: v} : r))} onDeleteRecord={id => setRecords(p => p.filter(r => r.id !== id))} onOpenPicker={(id, field, role, cid) => setPickerState({ type: 'route', targetId: id, field, role, currentValueId: cid })} onUpdateStaff={setAbsenceChoice} selectedDate={selectedDate} activeShiftLabel={shiftFilter} presenceOverrides={dailyOverrides} />
                           )}
                        </div>
                     </div>
@@ -360,17 +400,32 @@ const App: React.FC = () => {
                     <input autoFocus type="text" placeholder="BUSCAR LEGAJO O NOMBRE..." value={pickerSearch} onChange={e => setPickerSearch(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-indigo-100" />
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => (
-                        <div key={s.id} onClick={() => s.status !== StaffStatus.ABSENT && handlePickerSelection(s)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer hover:bg-indigo-50 transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100'} ${s.status === StaffStatus.ABSENT ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
-                            <div><p className="text-[10px] font-black uppercase">{s.name}</p><p className="text-[8px] text-slate-400 font-bold uppercase">LEG: {s.id} {s.status === StaffStatus.ABSENT && <span className="text-red-500 ml-2">[{s.address}]</span>}</p></div>
-                            <Check className={s.id === pickerState.currentValueId ? 'text-indigo-600' : 'text-slate-200'} size={16} />
-                        </div>
-                    )) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
+                    {sortedPickerList.length > 0 ? sortedPickerList.map(s => {
+                        const isAbsentInPadron = s.status === StaffStatus.ABSENT;
+                        const isOverridden = dailyOverrides.includes(s.id);
+                        
+                        return (
+                            <div key={s.id} onClick={() => handlePickerSelection(s)} className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer hover:bg-indigo-50 transition-all ${s.id === pickerState.currentValueId ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100'} ${isAbsentInPadron && !isOverridden ? 'opacity-50 grayscale' : ''}`}>
+                                <div>
+                                    <p className="text-[10px] font-black uppercase">{s.name}</p>
+                                    <p className="text-[8px] text-slate-400 font-bold uppercase">LEG: {s.id} {isAbsentInPadron && <span className="text-red-500 ml-2">[{s.address}]</span>} {isOverridden && <span className="text-indigo-500 ml-2">[EXCEPCIÓN HOY]</span>}</p>
+                                </div>
+                                <CheckCircle2 className={s.id === pickerState.currentValueId ? 'text-indigo-600' : 'text-slate-200'} size={16} />
+                            </div>
+                        );
+                    }) : (<div className="text-center py-20 bg-slate-50 rounded-[3rem] border-4 border-dashed border-slate-200"><p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin resultados</p></div>)}
                     <button onClick={() => handlePickerSelection(null)} className="w-full p-3 border-2 border-dashed border-slate-200 rounded-xl text-[9px] font-black text-red-500 uppercase hover:bg-red-50">Quitar Asignación</button>
                 </div>
             </div>
         </div>
       )}
+
+      <AbsenceChoiceModal 
+        staff={absenceChoice} 
+        onClose={() => setAbsenceChoice(null)} 
+        onDecision={handleAbsenceDecision} 
+      />
+
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
       <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { const newRec: RouteRecord = { id: `NEW-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'EXTRA', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: subTab === 'REPASO' ? 'REPASO_LATERAL' : 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }; setRecords(prev => [...prev, newRec]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
     </div>

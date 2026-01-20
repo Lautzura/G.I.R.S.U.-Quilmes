@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord } from './types';
+import { RouteRecord, StaffMember, StaffStatus, ZoneStatus, ShiftMetadata, TransferRecord, TransferUnit } from './types';
 import { ReportTable } from './components/ReportTable';
 import { StaffManagement } from './components/StaffManagement';
 import { ShiftManagersTop } from './components/ShiftManagers';
@@ -102,6 +102,9 @@ const App: React.FC = () => {
         replacementAux2: r.replacementAux2?.id || null
     })), currentStaff));
 
+    /**
+     * Fix: Added 'as unknown' cast before the tuple cast to satisfy TypeScript when mapping.
+     */
     setTransferRecords(prev => prev.map(tr => ({
         ...tr,
         maquinista: findStaffSecure(tr.maquinista?.id || tr.maquinista, currentStaff),
@@ -109,7 +112,7 @@ const App: React.FC = () => {
         balancero1: findStaffSecure(tr.balancero1?.id || tr.balancero1, currentStaff),
         auxTolva1: findStaffSecure(tr.auxTolva1?.id || tr.auxTolva1, currentStaff),
         auxTolva2: findStaffSecure(tr.auxTolva2?.id || tr.auxTolva2, currentStaff),
-        units: tr.units.map(u => ({ ...u, driver: findStaffSecure(u.driver?.id || u.driver, currentStaff) }))
+        units: tr.units.map(u => ({ ...u, driver: findStaffSecure(u.driver?.id || u.driver, currentStaff) })) as unknown as [TransferUnit, TransferUnit, TransferUnit]
     })));
   }, [findStaffSecure, mapStaffToIds]);
 
@@ -175,7 +178,19 @@ const App: React.FC = () => {
 
     const dayTrans = localStorage.getItem(`${DAILY_TRANS_KEY}${selectedDate}`);
     if (dayTrans) {
-        setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ ...tr, maquinista: findStaffSecure(tr.maquinista, initialStaff), encargado: findStaffSecure(tr.encargado, initialStaff), balancero1: findStaffSecure(tr.balancero1, initialStaff), auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) })));
+        /**
+         * Fix: Cast mapped units array to [TransferUnit, TransferUnit, TransferUnit] using 'as unknown as'
+         * to satisfy the fixed-size tuple type requirement defined in TransferRecord.
+         */
+        setTransferRecords(JSON.parse(dayTrans).map((tr: any) => ({ 
+            ...tr, 
+            maquinista: findStaffSecure(tr.maquinista, initialStaff), 
+            encargado: findStaffSecure(tr.encargado, initialStaff), 
+            balancero1: findStaffSecure(tr.balancero1, initialStaff), 
+            auxTolva1: findStaffSecure(tr.auxTolva1, initialStaff), 
+            auxTolva2: findStaffSecure(tr.auxTolva2, initialStaff), 
+            units: tr.units.map((u:any) => ({ ...u, driver: findStaffSecure(u.driver, initialStaff) })) as unknown as [TransferUnit, TransferUnit, TransferUnit]
+        })));
     } else {
         setTransferRecords([createEmptyTrans('MAÑANA'), createEmptyTrans('TARDE'), createEmptyTrans('NOCHE')]);
     }
@@ -201,7 +216,19 @@ const App: React.FC = () => {
         try {
             localStorage.setItem(STAFF_KEY, JSON.stringify(staffList));
             const pRecs = records.map(r => ({ ...r, driver: r.driver?.id || null, aux1: r.aux1?.id || null, aux2: r.aux2?.id || null, aux3: r.aux3?.id || null, aux4: r.aux4?.id || null, replacementDriver: r.replacementDriver?.id || null, replacementAux1: r.replacementAux1?.id || null, replacementAux2: r.replacementAux2?.id || null }));
-            const pTrans = transferRecords.map(tr => ({ ...tr, maquinista: tr.maquinista?.id || null, encargado: tr.encargado?.id || null, balancero1: tr.balancero1?.id || null, auxTolva1: tr.auxTolva1?.id || null, auxTolva2: tr.auxTolva2?.id || null, units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) }));
+            
+            /**
+             * Fix: Cast units array to tuple using 'as unknown as' before persisting.
+             */
+            const pTrans = transferRecords.map(tr => ({ 
+                ...tr, 
+                maquinista: tr.maquinista?.id || null, 
+                encargado: tr.encargado?.id || null, 
+                balancero1: tr.balancero1?.id || null, 
+                auxTolva1: tr.auxTolva1?.id || null, 
+                auxTolva2: tr.auxTolva2?.id || null, 
+                units: tr.units.map(u => ({ ...u, driver: u.driver?.id || null })) as unknown as [TransferUnit, TransferUnit, TransferUnit]
+            }));
             
             localStorage.setItem(`${DAILY_DATA_KEY}${selectedDate}`, JSON.stringify(pRecs)); 
             localStorage.setItem(`${DAILY_TRANS_KEY}${selectedDate}`, JSON.stringify(pTrans)); 
@@ -221,7 +248,18 @@ const App: React.FC = () => {
     if (!pickerState) return;
     const { type, targetId, field, unitIdx } = pickerState;
     if (type.includes('route')) setRecords(prev => prev.map(r => r.id === targetId ? { ...r, [field]: selectedStaff } : r));
-    else if (type.includes('transfer')) setTransferRecords(prev => prev.map(tr => { if (tr.id !== targetId) return tr; if (field === 'units' && unitIdx !== undefined) { const u = [...tr.units]; u[unitIdx] = { ...u[unitIdx], driver: selectedStaff }; return { ...tr, units: u as any }; } return { ...tr, [field]: selectedStaff }; }));
+    else if (type.includes('transfer')) setTransferRecords(prev => prev.map(tr => { 
+        if (tr.id !== targetId) return tr; 
+        if (field === 'units' && unitIdx !== undefined) { 
+            /**
+             * Fix: Use unknown cast to convert the spread array back to a tuple.
+             */
+            const u = [...tr.units] as unknown as [TransferUnit, TransferUnit, TransferUnit]; 
+            u[unitIdx] = { ...u[unitIdx], driver: selectedStaff }; 
+            return { ...tr, units: u }; 
+        } 
+        return { ...tr, [field]: selectedStaff }; 
+    }));
     else if (type.includes('managers')) setShiftManagers(prev => ({ ...prev, [targetId]: { ...prev[targetId], [field]: selectedStaff ? selectedStaff.name : '' } }));
     setPickerState(null);
   };

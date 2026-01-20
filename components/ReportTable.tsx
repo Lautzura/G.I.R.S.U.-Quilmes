@@ -1,7 +1,7 @@
 
-import { RouteRecord, StaffStatus, StaffMember, ZoneStatus, AbsenceReason } from '../types';
+import { RouteRecord, StaffStatus, StaffMember, ZoneStatus } from '../types';
 import React, { useMemo } from 'react';
-import { Trash, UserCheck, UserX } from 'lucide-react';
+import { Trash, UserCheck, UserX, Zap } from 'lucide-react';
 import { getAbsenceStyles } from '../styles';
 
 interface ReportTableProps {
@@ -11,8 +11,8 @@ interface ReportTableProps {
   onOpenPicker: (id: string, field: string, role: string, currentValueId?: string) => void;
   onUpdateStaff: (staff: StaffMember) => void;
   activeShiftLabel?: string;
-  isMasterMode?: boolean;
   selectedDate: string;
+  presenceOverrides?: string[];
 }
 
 interface StaffCellProps {
@@ -20,16 +20,17 @@ interface StaffCellProps {
   role: string;
   isSuplente?: boolean;
   onClick?: () => void;
-  onUpdateStatus?: (staff: StaffMember, newStatus: StaffStatus) => void;
+  onUpdateStatus?: (staff: StaffMember) => void;
   rowIndex: number;
   colIndex: number;
   onNavigate: (r: number, c: number) => void;
+  isOverridden?: boolean;
 }
 
 const StaffCell: React.FC<StaffCellProps> = ({ 
-    staff, role, isSuplente, onClick, onUpdateStatus, rowIndex, colIndex, onNavigate 
+    staff, role, isSuplente, onClick, onUpdateStatus, rowIndex, colIndex, onNavigate, isOverridden 
 }) => {
-  const isAbsent = staff?.status === StaffStatus.ABSENT;
+  const isAbsent = staff?.status === StaffStatus.ABSENT && !isOverridden;
   const absenceStyle = isAbsent ? getAbsenceStyles(staff?.address || 'FALTA') : '';
   
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -49,7 +50,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
       onKeyDown={handleKeyDown}
       className={`border border-black p-0 min-w-[130px] h-10 transition-all relative group/cell focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer select-none ${
         !staff ? (isSuplente ? 'bg-indigo-50/20' : 'bg-white') : 
-        (isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-50 text-indigo-900 italic' : 'bg-white hover:bg-slate-50')
+        (isAbsent ? absenceStyle : isSuplente ? 'bg-indigo-50 text-indigo-900 italic' : isOverridden ? 'bg-indigo-50' : 'bg-white hover:bg-slate-50')
       }`}
     >
       <div onClick={onClick} className="w-full h-full flex flex-col items-center justify-center px-1">
@@ -69,6 +70,11 @@ const StaffCell: React.FC<StaffCellProps> = ({
                   FALTA [{staff.address || 'FALTA'}]
                 </span>
               )}
+              {isOverridden && (
+                <span className="flex items-center gap-1 text-[7px] font-black uppercase bg-indigo-600 text-white px-1.5 py-0.5 rounded-full">
+                  <Zap size={8} fill="currentColor" /> HOY
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -78,7 +84,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
         <button 
           onClick={(e) => { 
               e.stopPropagation(); 
-              onUpdateStatus?.(staff, isAbsent ? StaffStatus.PRESENT : StaffStatus.ABSENT); 
+              onUpdateStatus?.(staff); 
           }}
           className={`absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 transition-opacity p-1.5 rounded-lg shadow-xl z-10 ${isAbsent ? 'bg-emerald-500 text-white' : 'bg-red-600 text-white hover:bg-red-700'}`}
         >
@@ -89,7 +95,7 @@ const StaffCell: React.FC<StaffCellProps> = ({
   );
 };
 
-export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate }) => {
+export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, onDeleteRecord, onOpenPicker, onUpdateStaff, activeShiftLabel, selectedDate, presenceOverrides = [] }) => {
   const domainHistory = useMemo(() => {
     const history: Record<string, string> = {};
     data.forEach(r => { if (r.internalId && r.domain) history[r.internalId] = r.domain; });
@@ -115,11 +121,6 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
     else if (key === 'ArrowDown') { e.preventDefault(); focusCell(rIdx + 1, cIdx); }
     else if (key === 'ArrowLeft') { if (!(target instanceof HTMLInputElement) || target.selectionStart === 0) { e.preventDefault(); focusCell(rIdx, cIdx - 1); } }
     else if (key === 'ArrowRight') { if (!(target instanceof HTMLInputElement) || target.selectionEnd === target.value.length) { e.preventDefault(); focusCell(rIdx, cIdx + 1); } }
-  };
-
-  const handleToggleStatus = (s: StaffMember, newStatus: StaffStatus) => {
-      if (newStatus === StaffStatus.PRESENT) onUpdateStaff({ ...s, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined, absenceReturnDate: undefined, isIndefiniteAbsence: false });
-      else onUpdateStaff({ ...s, status: StaffStatus.ABSENT, address: 'FALTA', absenceStartDate: selectedDate });
   };
 
   return (
@@ -155,14 +156,14 @@ export const ReportTable: React.FC<ReportTableProps> = ({ data, onUpdateRecord, 
                   <td className="sticky left-0 z-20 font-black border-r border-black text-center bg-slate-100 uppercase text-slate-900 px-2">{r.zone}</td>
                   <td data-row={rowIndex} data-col={0} className="border-r border-black p-0"><input type="text" value={r.internalId || ''} onChange={e => { onUpdateRecord?.(r.id, 'internalId', e.target.value); if (domainHistory[e.target.value] && !r.domain) onUpdateRecord?.(r.id, 'domain', domainHistory[e.target.value]); }} onKeyDown={e => handleInputKeyDown(e, rowIndex, 0)} className="w-full h-full bg-transparent text-center font-black outline-none border-none" /></td>
                   <td data-row={rowIndex} data-col={1} className="border-r border-black p-0"><input type="text" value={r.domain || ''} onChange={e => onUpdateRecord?.(r.id, 'domain', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 1)} className="w-full h-full bg-transparent text-center font-bold outline-none border-none uppercase" /></td>
-                  <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER', r.driver?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux1} role="AUX I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR', r.aux1?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux2} role="AUX II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR', r.aux2?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux3} role="AUX III" rowIndex={rowIndex} colIndex={5} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR', r.aux3?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.aux4} role="AUX IV" rowIndex={rowIndex} colIndex={6} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR', r.aux4?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementDriver} role="REP CHO" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER', r.replacementDriver?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR', r.replacementAux1?.id)} onUpdateStatus={handleToggleStatus} />
-                  <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR', r.replacementAux2?.id)} onUpdateStatus={handleToggleStatus} />
+                  <StaffCell staff={r.driver} role="CHOFER" rowIndex={rowIndex} colIndex={2} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'driver', 'CHOFER', r.driver?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.driver ? presenceOverrides.includes(r.driver.id) : false} />
+                  <StaffCell staff={r.aux1} role="AUX I" rowIndex={rowIndex} colIndex={3} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux1', 'AUXILIAR', r.aux1?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.aux1 ? presenceOverrides.includes(r.aux1.id) : false} />
+                  <StaffCell staff={r.aux2} role="AUX II" rowIndex={rowIndex} colIndex={4} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux2', 'AUXILIAR', r.aux2?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.aux2 ? presenceOverrides.includes(r.aux2.id) : false} />
+                  <StaffCell staff={r.aux3} role="AUX III" rowIndex={rowIndex} colIndex={5} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux3', 'AUXILIAR', r.aux3?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.aux3 ? presenceOverrides.includes(r.aux3.id) : false} />
+                  <StaffCell staff={r.aux4} role="AUX IV" rowIndex={rowIndex} colIndex={6} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'aux4', 'AUXILIAR', r.aux4?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.aux4 ? presenceOverrides.includes(r.aux4.id) : false} />
+                  <StaffCell staff={r.replacementDriver} role="REP CHO" isSuplente rowIndex={rowIndex} colIndex={7} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementDriver', 'CHOFER', r.replacementDriver?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.replacementDriver ? presenceOverrides.includes(r.replacementDriver.id) : false} />
+                  <StaffCell staff={r.replacementAux1} role="REP A1" isSuplente rowIndex={rowIndex} colIndex={8} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux1', 'AUXILIAR', r.replacementAux1?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.replacementAux1 ? presenceOverrides.includes(r.replacementAux1.id) : false} />
+                  <StaffCell staff={r.replacementAux2} role="REP A2" isSuplente rowIndex={rowIndex} colIndex={9} onNavigate={focusCell} onClick={() => onOpenPicker(r.id, 'replacementAux2', 'AUXILIAR', r.replacementAux2?.id)} onUpdateStatus={onUpdateStaff} isOverridden={r.replacementAux2 ? presenceOverrides.includes(r.replacementAux2.id) : false} />
                   <td data-row={rowIndex} data-col={10} className="border-r border-black p-0"><select value={r.zoneStatus} onKeyDown={e => handleInputKeyDown(e, rowIndex, 10)} onChange={e => onUpdateRecord?.(r.id, 'zoneStatus', e.target.value as any)} className={`w-full h-full bg-transparent border-none outline-none font-black text-[8px] text-center cursor-pointer ${r.zoneStatus === ZoneStatus.COMPLETE ? 'text-emerald-600' : r.zoneStatus === ZoneStatus.INCOMPLETE ? 'text-red-600' : 'text-slate-400'}`}><option value={ZoneStatus.PENDING}>PENDIENTE</option><option value={ZoneStatus.COMPLETE}>COMPLETA</option><option value={ZoneStatus.INCOMPLETE}>INCOMPLETA</option></select></td>
                   <td data-row={rowIndex} data-col={11} className="border-r border-black p-0"><input type="text" value={r.supervisionReport || ''} onChange={e => onUpdateRecord?.(r.id, 'supervisionReport', e.target.value.toUpperCase())} onKeyDown={e => handleInputKeyDown(e, rowIndex, 11)} className="w-full h-full bg-transparent outline-none px-2 font-bold text-[9px] uppercase" placeholder="..." /></td>
                   <td data-row={rowIndex} data-col={12} className="border-r border-black p-0"><input type="text" value={r.tonnage || ''} onChange={e => onUpdateRecord?.(r.id, 'tonnage', e.target.value)} onKeyDown={e => handleInputKeyDown(e, rowIndex, 12)} className="w-full h-full bg-transparent text-center outline-none font-black text-indigo-600" placeholder="0.0" /></td>

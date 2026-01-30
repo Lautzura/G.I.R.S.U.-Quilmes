@@ -8,9 +8,9 @@ import { AbsenceReason } from './types';
 export const getAbsenceStyles = (reason: string) => {
     const r = (reason || '').toUpperCase();
     
-    // Categoría: Faltas Graves / Suspensiones (Rojo oscuro)
-    if (r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) {
-        return 'bg-red-900 text-white border-red-950 font-black shadow-inner';
+    // Categoría: Falta Directa (Rojo no tan intenso)
+    if (r === 'FALTA' || r.includes('INJUSTIFICADA') || r.includes('95') || r.includes('SUSPENSION')) {
+        return 'bg-red-500 text-white border-red-600 font-black shadow-inner';
     }
     
     // Categoría: Vacaciones (Ámbar/Naranja)

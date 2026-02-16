@@ -7,6 +7,7 @@ import { ShiftManagersTop } from './components/ShiftManagers';
 import { TransferTable } from './components/TransferTable';
 import { ShiftCloseModal } from './components/ShiftCloseModal';
 import { NewRouteModal } from './components/NewRouteModal';
+import { LoadADNModal } from './components/LoadADNModal';
 import { 
     MANANA_MASTER_DATA, TARDE_MASTER_DATA, NOCHE_MASTER_DATA,
     MANANA_REPASO_DATA, TARDE_REPASO_DATA, NOCHE_REPASO_DATA,
@@ -22,7 +23,9 @@ import {
     CheckCircle2,
     X,
     LogOut,
-    History
+    History,
+    FolderOpen,
+    Save
 } from 'lucide-react';
 
 const syncChannel = new BroadcastChannel('girsu_sync_v36');
@@ -70,6 +73,7 @@ const App: React.FC = () => {
   const [pickerSearch, setPickerSearch] = useState('');
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
   const [isNewRouteModalOpen, setIsNewRouteModalOpen] = useState(false);
+  const [isLoadADNModalOpen, setIsLoadADNModalOpen] = useState(false);
 
   const findAndSnap = useCallback((stored: any, list: StaffMember[]) => {
     if (!stored) return null;
@@ -221,53 +225,21 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Función simplificada para alternar entre PRESENTE y FALTA directamente
   const handleToggleAbsence = (staff: StaffMember) => {
     const isCurrentlyAbsent = staff.status === StaffStatus.ABSENT;
     let updatedStaff: StaffMember;
-
     if (isCurrentlyAbsent) {
-        // Estaba ausente, lo pasamos a PRESENTE (Quitamos falta)
-        updatedStaff = { 
-          ...staff, 
-          status: StaffStatus.PRESENT, 
-          address: '', 
-          absenceStartDate: undefined, 
-          absenceReturnDate: undefined, 
-          isIndefiniteAbsence: false 
-        };
+        updatedStaff = { ...staff, status: StaffStatus.PRESENT, address: '', absenceStartDate: undefined, absenceReturnDate: undefined, isIndefiniteAbsence: false };
     } else {
-        // Estaba presente, le ponemos FALTA
-        updatedStaff = { 
-          ...staff, 
-          status: StaffStatus.ABSENT, 
-          address: 'FALTA' 
-        };
+        updatedStaff = { ...staff, status: StaffStatus.ABSENT, address: 'FALTA' };
     }
-
-    // Actualizar padrón
     handleUpdateStaff(updatedStaff);
-    
-    // Si quitamos falta, nos aseguramos de que no esté en overrides del día
-    if (isCurrentlyAbsent) {
-        setDailyOverrides(prev => prev.filter(id => id !== updatedStaff.id));
-    }
-
-    // Actualizar todos los registros abiertos del día para que el cambio sea instantáneo y visual
+    if (isCurrentlyAbsent) setDailyOverrides(prev => prev.filter(id => id !== updatedStaff.id));
     setRecords(prev => prev.map(r => {
         const up = (p: StaffMember | null) => (p && p.id === updatedStaff.id) ? updatedStaff : p;
-        return { 
-          ...r, 
-          driver: up(r.driver), aux1: up(r.aux1), aux2: up(r.aux2), aux3: up(r.aux3), aux4: up(r.aux4), 
-          replacementDriver: up(r.replacementDriver), replacementAux1: up(r.replacementAux1), replacementAux2: up(r.replacementAux2) 
-        };
+        return { ...r, driver: up(r.driver), aux1: up(r.aux1), aux2: up(r.aux2), aux3: up(r.aux3), aux4: up(r.aux4), replacementDriver: up(r.replacementDriver), replacementAux1: up(r.replacementAux1), replacementAux2: up(r.replacementAux2) };
     }));
-    
-    setTransferRecords(prev => prev.map(tr => ({ 
-      ...tr, 
-      maquinista: (tr.maquinista?.id === updatedStaff.id) ? updatedStaff : tr.maquinista, 
-      units: tr.units.map(u => u.driver?.id === updatedStaff.id ? { ...u, driver: updatedStaff } : u) as any 
-    })));
+    setTransferRecords(prev => prev.map(tr => ({ ...tr, maquinista: (tr.maquinista?.id === updatedStaff.id) ? updatedStaff : tr.maquinista, units: tr.units.map(u => u.driver?.id === updatedStaff.id ? { ...u, driver: updatedStaff } : u) as any })));
   };
 
   const handlePickerSelection = (selectedStaff: StaffMember | null) => {
@@ -301,7 +273,27 @@ const App: React.FC = () => {
     if (existingIdx !== -1) adnHistory[existingIdx] = newEntry;
     else adnHistory.push(newEntry);
     localStorage.setItem(ADN_HISTORY_KEY, JSON.stringify(adnHistory));
-    alert("Plantilla guardada correctamente.");
+    alert("Plantilla (ADN) guardada correctamente.");
+  };
+
+  const handleApplyADN = (adnMap: Record<string, any>) => {
+    setRecords(prev => prev.map(r => {
+        const zoneKey = `${r.shift}-${r.zone}`;
+        const adnOverride = adnMap[zoneKey];
+        if (!adnOverride) return r;
+        return {
+            ...r,
+            driver: findAndSnap(adnOverride.driver, staffList),
+            aux1: findAndSnap(adnOverride.aux1, staffList),
+            aux2: findAndSnap(adnOverride.aux2, staffList),
+            aux3: findAndSnap(adnOverride.aux3, staffList),
+            aux4: findAndSnap(adnOverride.aux4, staffList),
+            replacementDriver: findAndSnap(adnOverride.replacementDriver, staffList),
+            replacementAux1: findAndSnap(adnOverride.replacementAux1, staffList),
+            replacementAux2: findAndSnap(adnOverride.replacementAux2, staffList),
+        };
+    }));
+    alert("Plantilla aplicada con éxito.");
   };
 
   const sortedPickerList = useMemo(() => {
@@ -346,8 +338,13 @@ const App: React.FC = () => {
              </div>
              {activeTab === 'parte' && (
                 <div className="flex items-center gap-2 border-l pl-3 ml-1">
-                  <button onClick={handleSaveAsADN} className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 transition-all"><History size={18} /></button>
-                  <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-indigo-600 transition-all"><Plus size={18} /></button>
+                  <button onClick={() => setIsLoadADNModalOpen(true)} className="bg-slate-100 text-slate-600 p-2 rounded-xl hover:bg-slate-200 transition-all flex items-center gap-2" title="Cargar Plantilla">
+                    <FolderOpen size={18} />
+                  </button>
+                  <button onClick={handleSaveAsADN} className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-100" title="Guardar como ADN">
+                    <Save size={18} />
+                  </button>
+                  <button onClick={() => setIsNewRouteModalOpen(true)} className="bg-slate-900 text-white p-2 rounded-xl hover:bg-indigo-600 transition-all ml-2"><Plus size={18} /></button>
                   <button onClick={() => setIsCloseModalOpen(true)} className="bg-emerald-600 text-white p-2 rounded-xl hover:bg-emerald-700 transition-all"><CheckCircle2 size={18} /></button>
                 </div>
              )}
@@ -418,6 +415,7 @@ const App: React.FC = () => {
         </div>
       )}
 
+      <LoadADNModal isOpen={isLoadADNModalOpen} onClose={() => setIsLoadADNModalOpen(false)} onSelect={handleApplyADN} />
       <ShiftCloseModal isOpen={isCloseModalOpen} onClose={() => setIsCloseModalOpen(false)} shift={shiftFilter} records={records} />
       <NewRouteModal isOpen={isNewRouteModalOpen} onClose={() => setIsNewRouteModalOpen(false)} onSave={(z, s) => { const newRec: RouteRecord = { id: `NEW-${Date.now()}`, zone: z, internalId: '', domain: '', reinforcement: 'EXTRA', shift: s as any, departureTime: '', dumpTime: '', tonnage: '', category: 'RECOLECCIÓN', zoneStatus: ZoneStatus.PENDING, order: records.length, driver: null, aux1: null, aux2: null, aux3: null, aux4: null, replacementDriver: null, replacementAux1: null, replacementAux2: null, supervisionReport: '' }; setRecords(prev => [...prev, newRec]); }} currentShift={shiftFilter === 'TODOS' ? 'MAÑANA' : shiftFilter} />
     </div>
